@@ -1,0 +1,184 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum Role {
+  ADULT
+  KID
+}
+
+enum CompletionStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+model Family {
+  id        String   @id @default(cuid())
+  name      String
+  createdAt DateTime @default(now())
+  users     User[]
+  chores    Chore[]
+  awards    Award[]
+}
+
+model User {
+  id           String   @id @default(cuid())
+  username String @unique
+  email        String   @unique
+  name         String?
+  role         Role
+  passwordHash String
+  familyId     String
+  family       Family   @relation(fields: [familyId], references: [id])
+  createdAt    DateTime @default(now())
+
+  assignments ChoreAssignment[]
+  completions ChoreCompletion[]
+  awards      UserAward[]
+
+  approvalsGiven ChoreCompletion[] @relation("Approval")
+  // Admin lifecycle flags
+  isActive Boolean @default(true)
+  isHidden Boolean @default(false)
+
+  // Weekly Stars
+  starWeeks StarWeek[]
+  starExchanges StarExchange[] @relation("StarExchange_user")
+  starReviews StarExchange[] @relation("StarExchange_reviewedBy")
+
+}
+
+model Chore {
+  id          String  @id @default(cuid())
+  familyId    String
+  family      Family  @relation(fields: [familyId], references: [id])
+  title       String
+  description String?
+  points      Int     @default(1)
+  active      Boolean @default(true)
+
+  schedules   ChoreSchedule[]
+  assignments ChoreAssignment[]
+  instances   ChoreInstance[]
+}
+
+model ChoreSchedule {
+  id      String @id @default(cuid())
+  choreId String
+  chore   Chore  @relation(fields: [choreId], references: [id])
+
+  frequency String // DAILY | WEEKLY
+  dayOfWeek Int?
+  timeOfDay String?
+
+  createdAt DateTime @default(now())
+}
+
+model ChoreAssignment {
+  id        String   @id @default(cuid())
+  choreId   String
+  chore     Chore    @relation(fields: [choreId], references: [id])
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  createdAt DateTime @default(now())
+
+  @@unique([choreId, userId])
+}
+
+model ChoreInstance {
+  id        String   @id @default(cuid())
+  choreId   String
+  chore     Chore    @relation(fields: [choreId], references: [id])
+  familyId  String
+  dueDate   DateTime
+  createdAt DateTime @default(now())
+
+  completions ChoreCompletion[]
+}
+
+model ChoreCompletion {
+  id              String        @id @default(cuid())
+  choreInstanceId String
+  choreInstance   ChoreInstance @relation(fields: [choreInstanceId], references: [id])
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id])
+
+  status       CompletionStatus @default(PENDING)
+  completedAt  DateTime         @default(now())
+  pointsEarned Int
+
+  approvedAt   DateTime?
+  approvedById String?
+  approvedBy   User?     @relation("Approval", fields: [approvedById], references: [id])
+
+  awardsGranted UserAward[]
+}
+
+model Award {
+  id              String      @id @default(cuid())
+  familyId        String
+  family          Family      @relation(fields: [familyId], references: [id])
+  name            String
+  icon            String?
+  thresholdPoints Int
+  createdAt       DateTime    @default(now())
+  userAwards      UserAward[]
+}
+
+model UserAward {
+  id           String           @id @default(cuid())
+  userId       String
+  user         User             @relation(fields: [userId], references: [id])
+  awardId      String
+  award        Award            @relation(fields: [awardId], references: [id])
+  completionId String?
+  completion   ChoreCompletion? @relation(fields: [completionId], references: [id])
+  earnedAt     DateTime         @default(now())
+
+  @@unique([userId, awardId])
+}
+
+
+enum StarExchangeStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+model StarWeek {
+  id         String   @id @default(cuid())
+  userId     String
+  weekStart  DateTime // Monday 00:00 local-ish
+  earned     Int      @default(0) // 1 if earned, else 0 (kept flexible)
+  computedAt DateTime @default(now())
+
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, weekStart])
+  @@index([weekStart])
+}
+
+model StarExchange {
+  id           String             @id @default(cuid())
+  userId       String
+  stars        Int
+  note         String?
+  status       StarExchangeStatus @default(PENDING)
+
+  requestedAt  DateTime           @default(now())
+  reviewedAt   DateTime?
+  reviewedById String?
+
+  user         User               @relation("StarExchange_user", fields: [userId], references: [id], onDelete: Cascade)
+  reviewedBy   User?              @relation("StarExchange_reviewedBy", fields: [reviewedById], references: [id], onDelete: SetNull)
+
+  @@index([userId, status])
+}
+

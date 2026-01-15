@@ -1,0 +1,99 @@
+import { NextResponse } from "next/server";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/lib/auth";
+import { prisma } from "@/lib/prisma";
+
+async function requireAdult() {
+  const session = await getServerSession(authOptions);
+  const email = session?.user?.email;
+  if (!email) return { status: 401 as const, error: "Unauthorized" as const };
+
+  const me = await prisma.user.findUnique({
+    where: { email },
+    select: { id: true, familyId: true, role: true },
+  });
+  if (!me) return { status: 401 as const, error: "Unauthorized" as const };
+  if (me.role !== "ADULT") return { status: 403 as const, error: "Forbidden" as const };
+
+  return { me };
+}
+
+export async function GET() {
+  const auth = await requireAdult();
+  if ("status" in auth) return NextResponse.json({ error: auth.error }, { status: auth.status });
+  const { me } = auth;
+
+  const pending = await prisma.choreCompletion.findMany({
+    where: { status: "PENDING", choreInstance: { familyId: me.familyId } },
+    select: {
+      id: true,
+      status: true,
+      completedAt: true,
+      pointsEarned: true,
+      user: { select: { id: true, name: true, email: true, role: true } },
+      choreInstance: {
+        select: {
+          id: true,
+          dueDate: true,
+          chore: { select: { id: true, title: true, points: true } },
+        },
+      },
+    },
+    orderBy: { completedAt: "desc" },
+    take: 200,
+  });
+
+  return NextResponse.json({
+    pending: pending.map((p) => ({
+      id: p.id,
+      completedAt: p.completedAt,
+      pointsEarned: p.pointsEarned,
+      kid: { id: p.user.id, name: p.user.name, email: p.user.email },
+      chore: { id: p.choreInstance.chore.id, title: p.choreInstance.chore.title, points: p.choreInstance.chore.points },
+      dueDate: p.choreInstance.dueDate,
+    })),
+  });
+}
+
+export async function POST(req: Request) {
+  const auth = await requireAdult();
+  if ("status" in auth) return NextResponse.json({ error: auth.error }, { status: auth.status });
+  const { me } = auth;
+
+  const body = await req.json().catch(() => ({}));
+  const completionId = String(body?.completionId ?? "");
+  const action = String(body?.action ?? ""); // "APPROVE" | "REJECT"
+  if (!completionId) return NextResponse.json({ error: "Missing completionId" }, { status: 400 });
+  if (action !== "APPROVE" && action !== "REJECT") return NextResponse.json({ error: "Invalid action" }, { status: 400 });
+
+  const completion = await prisma.choreCompletion.findFirst({
+    where: { id: completionId, status: "PENDING", choreInstance: { familyId: me.familyId } },
+    select: { id: true },
+  });
+  if (!completion) return NextResponse.json({ error: "Not found" }, { status: 404 });
+
+  if (action === "APPROVE") {
+    await prisma.choreCompletion.update({
+      where: { id: completionId },
+      data: {
+        status: "APPROVED",
+        approvedAt: new Date(),
+        approvedBy: { connect: { id: me.id } },
+      },
+    });
+    return NextResponse.json({ ok: true, status: "APPROVED" });
+  }
+
+  // REJECT (schema may not have rejectedBy / rejectedAt, so keep it minimal)
+  await prisma.choreCompletion.update({
+    where: { id: completionId },
+    data: {
+      status: "REJECTED",
+      // If approval fields exist, clear them.
+      approvedAt: null,
+      approvedBy: { disconnect: true },
+    },
+  });
+
+  return NextResponse.json({ ok: true, status: "REJECTED" });
+}
