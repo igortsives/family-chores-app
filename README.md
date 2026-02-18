@@ -22,6 +22,7 @@ Kids complete chores, earn ⭐ **Stars**, and exchange them for real-world rewar
 **Kids**
 - View assigned chores
 - Mark chores as completed
+- Undo a completion while it is still pending parent approval
 - Track weekly progress
 - Earn ⭐ Stars for completing all assigned chores in a week
 - Request star exchanges for real rewards
@@ -43,10 +44,11 @@ Kids complete chores, earn ⭐ **Stars**, and exchange them for real-world rewar
 ### 📊 Dashboards
 
 - My Chores (Kids)
-- Admin Chores & Approvals (Parents)
+- Parent Approvals (Parents)
+- Admin Chores Management (Parents)
 - Family Members Management
 - Awards / Stars History
-- Leaderboard
+- Leaderboard (hidden members are excluded)
 
 ---
 
@@ -174,4 +176,3 @@ MIT
 ## ❤️ Why This Exists
 
 Built for families who want structure, fairness, and motivation — without nagging.
-
