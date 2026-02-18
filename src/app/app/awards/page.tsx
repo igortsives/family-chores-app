@@ -102,7 +102,7 @@ export default function AwardsPage() {
 
       {data && role !== "KID" && (
         <Alert severity="info">
-          Parents approve exchanges in <b>Admin</b> → <b>Star exchanges</b>. Kids earn Stars weekly.
+          Parents approve exchanges in <b>Star exchanges</b>. Kids earn Stars weekly.
         </Alert>
       )}
 

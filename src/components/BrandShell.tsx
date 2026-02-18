@@ -28,6 +28,7 @@ import LeaderboardRoundedIcon from "@mui/icons-material/LeaderboardRounded";
 import AdminPanelSettingsRoundedIcon from "@mui/icons-material/AdminPanelSettingsRounded";
 import GroupRoundedIcon from "@mui/icons-material/GroupRounded";
 import FactCheckRoundedIcon from "@mui/icons-material/FactCheckRounded";
+import AutoAwesomeRoundedIcon from "@mui/icons-material/AutoAwesomeRounded";
 import LogoutRoundedIcon from "@mui/icons-material/LogoutRounded";
 
 type NavItem = {
@@ -56,6 +57,7 @@ export default function BrandShell({
     { label: "Leaderboard", href: "/app/leaderboard", icon: <LeaderboardRoundedIcon /> },
     { label: "Admin", href: "/app/admin/chores", icon: <AdminPanelSettingsRoundedIcon />, show: role === "ADULT" },
     { label: "Approvals", href: "/app/admin/approvals", icon: <FactCheckRoundedIcon />, show: role === "ADULT" },
+    { label: "Star exchanges", href: "/app/admin/stars", icon: <AutoAwesomeRoundedIcon />, show: role === "ADULT" },
     { label: "Family", href: "/app/admin/family", icon: <GroupRoundedIcon />, show: role === "ADULT" },
   ].filter((x) => x.show !== false);
 
