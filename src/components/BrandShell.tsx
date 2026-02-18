@@ -6,8 +6,11 @@ import { signOut } from "next-auth/react";
 import {
   AppBar,
   Avatar,
+  Badge,
   Box,
   Button,
+  Chip,
+  CircularProgress,
   Container,
   Divider,
   Drawer,
@@ -30,12 +33,24 @@ import GroupRoundedIcon from "@mui/icons-material/GroupRounded";
 import FactCheckRoundedIcon from "@mui/icons-material/FactCheckRounded";
 import AutoAwesomeRoundedIcon from "@mui/icons-material/AutoAwesomeRounded";
 import LogoutRoundedIcon from "@mui/icons-material/LogoutRounded";
+import NotificationsRoundedIcon from "@mui/icons-material/NotificationsRounded";
+import RefreshRoundedIcon from "@mui/icons-material/RefreshRounded";
 
 type NavItem = {
   label: string;
   href: string;
   icon: React.ReactNode;
   show?: boolean;
+};
+
+type NotificationItem = {
+  id: string;
+  kind: "REMINDER" | "UPDATE";
+  severity: "INFO" | "SUCCESS" | "WARNING" | "ERROR";
+  title: string;
+  message: string;
+  href: string;
+  createdAt: string;
 };
 
 export default function BrandShell({
@@ -50,6 +65,10 @@ export default function BrandShell({
   const pathname = usePathname();
   const router = useRouter();
   const [open, setOpen] = React.useState(false);
+  const [notifOpen, setNotifOpen] = React.useState(false);
+  const [notifLoading, setNotifLoading] = React.useState(false);
+  const [notifErr, setNotifErr] = React.useState<string | null>(null);
+  const [notifItems, setNotifItems] = React.useState<NotificationItem[]>([]);
 
   const nav: NavItem[] = [
     { label: "My chores", href: "/app/my-chores", icon: <ChecklistRoundedIcon /> },
@@ -64,6 +83,46 @@ export default function BrandShell({
   function go(href: string) {
     router.push(href);
     setOpen(false);
+  }
+
+  const loadNotifications = React.useCallback(async () => {
+    setNotifErr(null);
+    setNotifLoading(true);
+    try {
+      const res = await fetch("/api/notifications", { cache: "no-store" });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const msg = typeof j?.error === "string" ? j.error : `Failed (${res.status})`;
+        throw new Error(msg);
+      }
+      const items = Array.isArray(j?.items) ? (j.items as NotificationItem[]) : [];
+      setNotifItems(items);
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : String(e);
+      setNotifErr(message);
+    } finally {
+      setNotifLoading(false);
+    }
+  }, []);
+
+  React.useEffect(() => {
+    void loadNotifications();
+    const timer = window.setInterval(() => {
+      void loadNotifications();
+    }, 60_000);
+    return () => window.clearInterval(timer);
+  }, [loadNotifications]);
+
+  function notificationColor(severity: NotificationItem["severity"]) {
+    if (severity === "SUCCESS") return "success" as const;
+    if (severity === "WARNING") return "warning" as const;
+    if (severity === "ERROR") return "error" as const;
+    return "info" as const;
+  }
+
+  function openNotifications() {
+    setNotifOpen(true);
+    void loadNotifications();
   }
 
   const DrawerContent = (
@@ -155,11 +214,99 @@ export default function BrandShell({
               </Typography>
             </Box>
           </Stack>
+
+          <IconButton aria-label="notifications" onClick={openNotifications}>
+            <Badge
+              badgeContent={notifItems.length}
+              color="error"
+              overlap="circular"
+              max={99}
+              invisible={notifItems.length === 0}
+            >
+              <NotificationsRoundedIcon />
+            </Badge>
+          </IconButton>
         </Toolbar>
       </AppBar>
 
       <Drawer open={open} onClose={() => setOpen(false)} anchor="left">
         {DrawerContent}
+      </Drawer>
+
+      <Drawer open={notifOpen} onClose={() => setNotifOpen(false)} anchor="right">
+        <Box sx={{ width: 360, p: 2 }}>
+          <Stack direction="row" justifyContent="space-between" alignItems="center">
+            <Typography variant="h6" sx={{ fontWeight: 800 }}>
+              Notifications
+            </Typography>
+            <IconButton aria-label="refresh notifications" onClick={() => void loadNotifications()}>
+              <RefreshRoundedIcon />
+            </IconButton>
+          </Stack>
+
+          <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+            In-app reminders and recent updates.
+          </Typography>
+
+          <Divider sx={{ my: 1.5 }} />
+
+          {notifErr && (
+            <Typography color="error" variant="body2" sx={{ mb: 1 }}>
+              {notifErr}
+            </Typography>
+          )}
+
+          {notifLoading && (
+            <Stack direction="row" spacing={1.5} alignItems="center" sx={{ py: 1 }}>
+              <CircularProgress size={18} />
+              <Typography variant="body2">Loading notifications…</Typography>
+            </Stack>
+          )}
+
+          {!notifLoading && notifItems.length === 0 && (
+            <Typography variant="body2" color="text.secondary">
+              You&apos;re all caught up.
+            </Typography>
+          )}
+
+          <List disablePadding>
+            {notifItems.map((item) => (
+              <ListItemButton
+                key={item.id}
+                onClick={() => {
+                  router.push(item.href);
+                  setNotifOpen(false);
+                }}
+                sx={{ alignItems: "flex-start", borderRadius: 2, mb: 0.75 }}
+              >
+                <ListItemText
+                  primary={
+                    <Stack direction="row" justifyContent="space-between" alignItems="center" gap={1}>
+                      <Typography variant="body1" sx={{ fontWeight: 700 }}>
+                        {item.title}
+                      </Typography>
+                      <Chip
+                        label={item.kind === "REMINDER" ? "Reminder" : "Update"}
+                        size="small"
+                        color={notificationColor(item.severity)}
+                      />
+                    </Stack>
+                  }
+                  secondary={
+                    <Stack spacing={0.5} sx={{ mt: 0.5 }}>
+                      <Typography variant="body2" color="text.secondary">
+                        {item.message}
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary">
+                        {new Date(item.createdAt).toLocaleString()}
+                      </Typography>
+                    </Stack>
+                  }
+                />
+              </ListItemButton>
+            ))}
+          </List>
+        </Box>
       </Drawer>
 
       <Container maxWidth="lg" sx={{ py: { xs: 2, sm: 3 } }}>
