@@ -21,11 +21,12 @@ type Row = {
   description: string | null;
   points: number;
   todayInstanceId: string | null;
+  todayCompletionId: string | null;
   todayStatus: "NOT_DONE" | "PENDING" | "APPROVED" | "REJECTED" | string;
 };
 
 export default function MyChoresPage() {
-  const { status } = useSession();
+  const { data: session, status } = useSession();
   const [rows, setRows] = React.useState<Row[] | null>(null);
   const [err, setErr] = React.useState<string | null>(null);
   const [busy, setBusy] = React.useState<Record<string, boolean>>({});
@@ -53,6 +54,26 @@ export default function MyChoresPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ choreId: r.choreId, instanceId: r.todayInstanceId }),
+      });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(j?.error || `Failed (${res.status})`);
+      await load();
+    } catch (e: any) {
+      setErr(String(e?.message || e));
+    } finally {
+      setBusy((b) => ({ ...b, [r.choreId]: false }));
+    }
+  }
+
+  async function undoDone(r: Row) {
+    if (!r.todayCompletionId) return;
+    setBusy((b) => ({ ...b, [r.choreId]: true }));
+    setErr(null);
+    try {
+      const res = await fetch("/api/chores/undo", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ completionId: r.todayCompletionId }),
       });
       const j = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(j?.error || `Failed (${res.status})`);
@@ -104,36 +125,44 @@ export default function MyChoresPage() {
 
         {rows?.length === 0 && <Alert severity="info">No chores assigned.</Alert>}
 
-        {rows?.map((r) => (
-          <Card key={r.choreId} variant="outlined">
-            <CardContent>
-              <Stack spacing={1}>
-                <Stack direction="row" justifyContent="space-between" alignItems="flex-start" gap={2}>
-                  <Box>
-                    <Typography variant="h6">{r.title}</Typography>
-                    {r.description && (
-                      <Typography color="text.secondary" sx={{ mt: 0.5 }}>
-                        {r.description}
-                      </Typography>
-                    )}
-                    <Stack direction="row" spacing={1} sx={{ mt: 1 }} alignItems="center">
-                      <Chip label={`${r.points} pts`} size="small" />
-                      {statusChip(r.todayStatus)}
-                    </Stack>
-                  </Box>
+        {rows?.map((r) => {
+          const isKid = (session?.user as any)?.role === "KID";
+          const canUndo = isKid && r.todayStatus === "PENDING" && Boolean(r.todayCompletionId);
+          const disabled = busy[r.choreId] || r.todayStatus === "APPROVED" || (r.todayStatus === "PENDING" && !canUndo);
+          const label = busy[r.choreId] ? "Saving…" : canUndo ? "Undo" : r.todayStatus === "APPROVED" ? "Done" : "Mark done";
 
-                  <Button
-                    variant="contained"
-                    disabled={busy[r.choreId] || r.todayStatus === "PENDING" || r.todayStatus === "APPROVED"}
-                    onClick={() => markDone(r)}
-                  >
-                    {busy[r.choreId] ? "Saving…" : r.todayStatus === "APPROVED" ? "Done" : r.todayStatus === "PENDING" ? "Pending" : "Mark done"}
-                  </Button>
+          return (
+            <Card key={r.choreId} variant="outlined">
+              <CardContent>
+                <Stack spacing={1}>
+                  <Stack direction="row" justifyContent="space-between" alignItems="flex-start" gap={2}>
+                    <Box>
+                      <Typography variant="h6">{r.title}</Typography>
+                      {r.description && (
+                        <Typography color="text.secondary" sx={{ mt: 0.5 }}>
+                          {r.description}
+                        </Typography>
+                      )}
+                      <Stack direction="row" spacing={1} sx={{ mt: 1 }} alignItems="center">
+                        <Chip label={`${r.points} pts`} size="small" />
+                        {statusChip(r.todayStatus)}
+                      </Stack>
+                    </Box>
+
+                    <Button
+                      variant={canUndo ? "outlined" : "contained"}
+                      color={canUndo ? "inherit" : "primary"}
+                      disabled={disabled}
+                      onClick={() => (canUndo ? undoDone(r) : markDone(r))}
+                    >
+                      {label}
+                    </Button>
+                  </Stack>
                 </Stack>
-              </Stack>
-            </CardContent>
-          </Card>
-        ))}
+              </CardContent>
+            </Card>
+          );
+        })}
       </Stack>
     </Container>
   );

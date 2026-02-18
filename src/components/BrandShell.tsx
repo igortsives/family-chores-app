@@ -1,7 +1,6 @@
 "use client";
 
 import * as React from "react";
-import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { signOut } from "next-auth/react";
 import {
@@ -20,9 +19,7 @@ import {
   Stack,
   Toolbar,
   Typography,
-  useMediaQuery,
 } from "@mui/material";
-import { useTheme } from "@mui/material/styles";
 
 import MenuRoundedIcon from "@mui/icons-material/MenuRounded";
 import ChecklistRoundedIcon from "@mui/icons-material/ChecklistRounded";
@@ -30,6 +27,7 @@ import EmojiEventsRoundedIcon from "@mui/icons-material/EmojiEventsRounded";
 import LeaderboardRoundedIcon from "@mui/icons-material/LeaderboardRounded";
 import AdminPanelSettingsRoundedIcon from "@mui/icons-material/AdminPanelSettingsRounded";
 import GroupRoundedIcon from "@mui/icons-material/GroupRounded";
+import FactCheckRoundedIcon from "@mui/icons-material/FactCheckRounded";
 import LogoutRoundedIcon from "@mui/icons-material/LogoutRounded";
 
 type NavItem = {
@@ -50,8 +48,6 @@ export default function BrandShell({
 }) {
   const pathname = usePathname();
   const router = useRouter();
-  const theme = useTheme();
-  const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
   const [open, setOpen] = React.useState(false);
 
   const nav: NavItem[] = [
@@ -59,6 +55,7 @@ export default function BrandShell({
     { label: "Awards", href: "/app/awards", icon: <EmojiEventsRoundedIcon /> },
     { label: "Leaderboard", href: "/app/leaderboard", icon: <LeaderboardRoundedIcon /> },
     { label: "Admin", href: "/app/admin/chores", icon: <AdminPanelSettingsRoundedIcon />, show: role === "ADULT" },
+    { label: "Approvals", href: "/app/admin/approvals", icon: <FactCheckRoundedIcon />, show: role === "ADULT" },
     { label: "Family", href: "/app/admin/family", icon: <GroupRoundedIcon />, show: role === "ADULT" },
   ].filter((x) => x.show !== false);
 

@@ -3,12 +3,12 @@ const { PrismaClient } = require("@prisma/client");
 
 const prisma = new PrismaClient();
 
-async function upsertUser(email, name, role, password, familyId) {
+async function upsertUser(username, email, name, role, password, familyId) {
   const passwordHash = await bcrypt.hash(password, 10);
   return prisma.user.upsert({
     where: { email },
-    update: { name, role, passwordHash, familyId },
-    create: { email, name, role, passwordHash, familyId },
+    update: { username, name, role, passwordHash, familyId },
+    create: { username, email, name, role, passwordHash, familyId },
   });
 }
 
@@ -17,9 +17,9 @@ async function main() {
   let family = await prisma.family.findFirst({ where: { name: "Demo Family" } });
   if (!family) family = await prisma.family.create({ data: { name: "Demo Family" } });
 
-  await upsertUser("parent@example.com", "Parent", "ADULT", "parent1234", family.id);
-  await upsertUser("kid1@example.com", "Kid 1", "KID", "kid1234", family.id);
-  await upsertUser("kid2@example.com", "Kid 2", "KID", "kid1234", family.id);
+  await upsertUser("parent", "parent@example.com", "Parent", "ADULT", "parent1234", family.id);
+  await upsertUser("kid1", "kid1@example.com", "Kid 1", "KID", "kid1234", family.id);
+  await upsertUser("kid2", "kid2@example.com", "Kid 2", "KID", "kid1234", family.id);
 
   // Ensure baseline awards
   const awards = [

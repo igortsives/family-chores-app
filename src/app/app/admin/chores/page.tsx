@@ -322,7 +322,7 @@ export default function AdminChoresPage() {
             )}
 
             <Alert severity="info">
-              Kids submitting a completion will be <b>Pending approval</b>. (Approval UI can be added next.)
+              Kids submitting a completion will be <b>Pending approval</b>. Parents can review these in <b>Approvals</b>.
             </Alert>
           </Stack>
         </DialogContent>

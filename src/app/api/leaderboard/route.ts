@@ -21,7 +21,7 @@ function computeStreak(dayKeys: string[]) {
   const yKey = dayKey(yesterday);
 
   // streak counts consecutive days ending today if today has activity, otherwise ending yesterday if yesterday has activity.
-  let end = set.has(todayKey) ? new Date(today) : set.has(yKey) ? yesterday : null;
+  const end = set.has(todayKey) ? new Date(today) : set.has(yKey) ? yesterday : null;
   if (!end) return 0;
 
   let streak = 0;
@@ -47,7 +47,7 @@ export async function GET() {
 
   // Get kids (leaderboard focuses on kids; change if you want adults too)
   const kids = await prisma.user.findMany({
-    where: { familyId: me.familyId, role: "KID" },
+    where: { familyId: me.familyId, role: "KID", isHidden: false },
     select: { id: true, name: true, email: true },
     orderBy: [{ name: "asc" }, { email: "asc" }],
   });
