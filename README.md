@@ -164,6 +164,7 @@ scripts/              # Install / update scripts
 - Prisma client is generated locally
 - Logout is handled client-side to avoid redirect issues
 - Weekly star logic is Monday-based
+- Run unit tests with `npm run test:run`
 
 ---
 
