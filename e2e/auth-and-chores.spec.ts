@@ -1,6 +1,13 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
-
-const E2E_CHORE_TITLE = "E2E Dishwasher Reset";
+import {
+  E2E_CHORE_TITLE,
+  E2E_KID_NAME,
+  E2E_KID_PASSWORD,
+  E2E_KID_USERNAME,
+  E2E_PARENT_PASSWORD,
+  E2E_PARENT_USERNAME,
+  resetE2ETestState,
+} from "./test-data";
 
 async function loginAs(page: Page, username: string, password: string) {
   await page.goto("/login");
@@ -19,8 +26,16 @@ async function targetChoreCard(page: Page): Promise<{ card: Locator; button: Loc
 }
 
 test.describe("Kid and parent E2E flows", () => {
+  test.beforeEach(async () => {
+    await resetE2ETestState();
+  });
+
+  test.afterEach(async () => {
+    await resetE2ETestState();
+  });
+
   test("kid can clear unread notifications from the bell drawer", async ({ page }) => {
-    await loginAs(page, "kid1", "kid1234");
+    await loginAs(page, E2E_KID_USERNAME, E2E_KID_PASSWORD);
     await expect(page.getByRole("heading", { name: "Today's chores" })).toBeVisible();
 
     await page.getByLabel("notifications").click();
@@ -37,7 +52,7 @@ test.describe("Kid and parent E2E flows", () => {
   test("kid submission appears in parent approvals and can be approved", async ({ browser }) => {
     const kidContext = await browser.newContext();
     const kidPage = await kidContext.newPage();
-    await loginAs(kidPage, "kid1", "kid1234");
+    await loginAs(kidPage, E2E_KID_USERNAME, E2E_KID_PASSWORD);
     await expect(kidPage.getByRole("heading", { name: "Today's chores" })).toBeVisible();
 
     const kidTask = await targetChoreCard(kidPage);
@@ -52,14 +67,14 @@ test.describe("Kid and parent E2E flows", () => {
 
     const parentContext = await browser.newContext();
     const parentPage = await parentContext.newPage();
-    await loginAs(parentPage, "parent", "parent1234");
+    await loginAs(parentPage, E2E_PARENT_USERNAME, E2E_PARENT_PASSWORD);
     await parentPage.goto("/app/admin/approvals");
     await expect(parentPage.getByRole("heading", { name: "Approvals" })).toBeVisible();
 
     const approvalCard = parentPage
       .locator("[data-testid^='approval-card-']")
       .filter({ hasText: E2E_CHORE_TITLE })
-      .filter({ hasText: "Kid 1" })
+      .filter({ hasText: E2E_KID_NAME })
       .first();
     await expect(approvalCard).toBeVisible();
     await approvalCard.locator("[data-testid^='approval-approve-']").first().click();
