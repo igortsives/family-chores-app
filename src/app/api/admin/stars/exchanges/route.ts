@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireAdult } from "@/lib/requireUser";
+import { createNotification } from "@/lib/notifications";
 
 export async function GET() {
   const auth = await requireAdult();
@@ -54,6 +55,19 @@ export async function POST(req: Request) {
       reviewedAt: new Date(),
       reviewedBy: { connect: { id: me.id } } as any,
     } as any,
+  });
+
+  await createNotification({
+    userId: ex.userId,
+    sourceKey: `exchange-${id}-${nextStatus.toLowerCase()}`,
+    kind: "UPDATE",
+    severity: nextStatus === "APPROVED" ? "SUCCESS" : "ERROR",
+    title: "Star exchange updated",
+    message:
+      nextStatus === "APPROVED"
+        ? "Your star exchange request was approved."
+        : "Your star exchange request was rejected.",
+    href: "/app/awards",
   });
 
   return NextResponse.json({ ok: true });

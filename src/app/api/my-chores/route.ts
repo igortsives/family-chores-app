@@ -2,6 +2,14 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { Prisma } from "@prisma/client";
+
+function isMissingRejectionReasonColumn(error: unknown) {
+  if (!(error instanceof Prisma.PrismaClientKnownRequestError)) return false;
+  if (error.code !== "P2022") return false;
+  const message = String(error.message || "");
+  return message.includes("rejectionReason");
+}
 
 export async function GET() {
   const session = await getServerSession(authOptions);
@@ -40,24 +48,59 @@ export async function GET() {
   end.setHours(23, 59, 59, 999);
 
   // Find today's instances for those chores; if none exist yet, we’ll create “virtual instances” client-side.
-  const instances = await prisma.choreInstance.findMany({
-    where: {
-      familyId: user.familyId,
-      choreId: { in: chores.map((c) => c.id) },
-      dueDate: { gte: start, lte: end },
-    },
-    select: {
-      id: true,
-      choreId: true,
-      dueDate: true,
-      completions: {
-        where: { userId: user.id },
-        select: { id: true, status: true, completedAt: true, pointsEarned: true },
-        orderBy: { completedAt: "desc" },
-        take: 1,
+  const where = {
+    familyId: user.familyId,
+    choreId: { in: chores.map((c) => c.id) },
+    dueDate: { gte: start, lte: end },
+  } as const;
+
+  let hasRejectionReason = true;
+  let instances: any[] = [];
+
+  try {
+    instances = await prisma.choreInstance.findMany({
+      where,
+      select: {
+        id: true,
+        choreId: true,
+        dueDate: true,
+        completions: {
+          where: { userId: user.id },
+          select: {
+            id: true,
+            status: true,
+            completedAt: true,
+            pointsEarned: true,
+            rejectionReason: true,
+          },
+          orderBy: { completedAt: "desc" },
+          take: 1,
+        },
       },
-    },
-  });
+    });
+  } catch (error) {
+    if (!isMissingRejectionReasonColumn(error)) throw error;
+    hasRejectionReason = false;
+    instances = await prisma.choreInstance.findMany({
+      where,
+      select: {
+        id: true,
+        choreId: true,
+        dueDate: true,
+        completions: {
+          where: { userId: user.id },
+          select: {
+            id: true,
+            status: true,
+            completedAt: true,
+            pointsEarned: true,
+          },
+          orderBy: { completedAt: "desc" },
+          take: 1,
+        },
+      },
+    });
+  }
 
   // Map choreId -> instance
   const byChore: Record<string, typeof instances[number]> = {};
@@ -77,6 +120,7 @@ export async function GET() {
         todayDueDate: inst?.dueDate ?? null,
         todayStatus: completion?.status ?? "NOT_DONE",
         todayCompletionId: completion?.id ?? null,
+        todayRejectionReason: hasRejectionReason ? completion?.rejectionReason ?? null : null,
       };
     }),
   });

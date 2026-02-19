@@ -9,6 +9,7 @@ import {
   Card,
   CardContent,
   CircularProgress,
+  TextField,
   Stack,
   Typography,
   Chip,
@@ -30,6 +31,7 @@ export default function ApprovalsPage() {
   const [rows, setRows] = React.useState<PendingRow[] | null>(null);
   const [err, setErr] = React.useState<string | null>(null);
   const [busy, setBusy] = React.useState<Record<string, boolean>>({});
+  const [reasons, setReasons] = React.useState<Record<string, string>>({});
 
   async function load() {
     setErr(null);
@@ -47,14 +49,20 @@ export default function ApprovalsPage() {
     setBusy((b) => ({ ...b, [id]: true }));
     setErr(null);
     try {
+      const rejectionReason = (reasons[id] ?? "").trim();
+      if (action === "REJECT" && !rejectionReason) {
+        throw new Error("Please add a rejection reason before rejecting.");
+      }
+
       const res = await fetch("/api/admin/approvals", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ completionId: id, action }),
+        body: JSON.stringify({ completionId: id, action, rejectionReason }),
       });
       const j = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(j?.error || `Failed (${res.status})`);
       await load();
+      setReasons((r) => ({ ...r, [id]: "" }));
     } catch (e: any) {
       setErr(String(e?.message || e));
     } finally {
@@ -120,13 +128,22 @@ export default function ApprovalsPage() {
                   <Button
                     variant="outlined"
                     color="error"
-                    disabled={busy[r.id]}
+                    disabled={busy[r.id] || !(reasons[r.id] ?? "").trim()}
                     onClick={() => act(r.id, "REJECT")}
                   >
                     Reject
                   </Button>
                 </Stack>
               </Stack>
+
+              <TextField
+                label="Rejection reason (required to reject)"
+                placeholder="What should be fixed before approval?"
+                value={reasons[r.id] ?? ""}
+                onChange={(e) => setReasons((prev) => ({ ...prev, [r.id]: e.target.value }))}
+                size="small"
+                fullWidth
+              />
             </Stack>
           </CardContent>
         </Card>

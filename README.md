@@ -165,6 +165,7 @@ scripts/              # Install / update scripts
 - Logout is handled client-side to avoid redirect issues
 - Weekly star logic is Monday-based
 - Run unit tests with `npm run test:run`
+- Product roadmap: see `ROADMAP.md`
 
 ---
 

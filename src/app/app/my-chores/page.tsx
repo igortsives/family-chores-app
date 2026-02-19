@@ -23,6 +23,7 @@ type Row = {
   todayInstanceId: string | null;
   todayCompletionId: string | null;
   todayStatus: "NOT_DONE" | "PENDING" | "APPROVED" | "REJECTED" | string;
+  todayRejectionReason: string | null;
 };
 
 export default function MyChoresPage() {
@@ -116,7 +117,7 @@ export default function MyChoresPage() {
 
         {err && <Alert severity="error">{err}</Alert>}
 
-        {!rows && (
+        {!rows && !err && (
           <Stack direction="row" spacing={2} alignItems="center">
             <CircularProgress size={22} />
             <Typography>Loading chores…</Typography>
@@ -127,9 +128,22 @@ export default function MyChoresPage() {
 
         {rows?.map((r) => {
           const isKid = (session?.user as any)?.role === "KID";
+          const isRejected = r.todayStatus === "REJECTED";
           const canUndo = isKid && r.todayStatus === "PENDING" && Boolean(r.todayCompletionId);
           const disabled = busy[r.choreId] || r.todayStatus === "APPROVED" || (r.todayStatus === "PENDING" && !canUndo);
-          const label = busy[r.choreId] ? "Saving…" : canUndo ? "Undo" : r.todayStatus === "APPROVED" ? "Done" : "Mark done";
+          const label = busy[r.choreId]
+            ? canUndo
+              ? "Undoing…"
+              : isRejected
+                ? "Resubmitting…"
+                : "Saving…"
+            : canUndo
+              ? "Undo"
+              : r.todayStatus === "APPROVED"
+                ? "Done"
+                : isRejected
+                  ? "Resubmit"
+                  : "Mark done";
 
           return (
             <Card key={r.choreId} variant="outlined">
@@ -147,11 +161,16 @@ export default function MyChoresPage() {
                         <Chip label={`${r.points} pts`} size="small" />
                         {statusChip(r.todayStatus)}
                       </Stack>
+                      {r.todayStatus === "REJECTED" && r.todayRejectionReason && (
+                        <Alert severity="error" sx={{ mt: 1.5, py: 0 }}>
+                          Parent feedback: {r.todayRejectionReason} Update and tap <b>Resubmit</b>.
+                        </Alert>
+                      )}
                     </Box>
 
                     <Button
                       variant={canUndo ? "outlined" : "contained"}
-                      color={canUndo ? "inherit" : "primary"}
+                      color={canUndo ? "inherit" : isRejected ? "warning" : "primary"}
                       disabled={disabled}
                       onClick={() => (canUndo ? undoDone(r) : markDone(r))}
                     >

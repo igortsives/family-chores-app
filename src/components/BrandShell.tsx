@@ -35,6 +35,7 @@ import AutoAwesomeRoundedIcon from "@mui/icons-material/AutoAwesomeRounded";
 import LogoutRoundedIcon from "@mui/icons-material/LogoutRounded";
 import NotificationsRoundedIcon from "@mui/icons-material/NotificationsRounded";
 import RefreshRoundedIcon from "@mui/icons-material/RefreshRounded";
+import CloseRoundedIcon from "@mui/icons-material/CloseRounded";
 
 type NavItem = {
   label: string;
@@ -51,6 +52,7 @@ type NotificationItem = {
   message: string;
   href: string;
   createdAt: string;
+  readAt: string | null;
 };
 
 export default function BrandShell({
@@ -69,6 +71,7 @@ export default function BrandShell({
   const [notifLoading, setNotifLoading] = React.useState(false);
   const [notifErr, setNotifErr] = React.useState<string | null>(null);
   const [notifItems, setNotifItems] = React.useState<NotificationItem[]>([]);
+  const [notifUnreadCount, setNotifUnreadCount] = React.useState(0);
 
   const nav: NavItem[] = [
     { label: "My chores", href: "/app/my-chores", icon: <ChecklistRoundedIcon /> },
@@ -96,7 +99,9 @@ export default function BrandShell({
         throw new Error(msg);
       }
       const items = Array.isArray(j?.items) ? (j.items as NotificationItem[]) : [];
+      const unreadCount = typeof j?.unreadCount === "number" ? j.unreadCount : 0;
       setNotifItems(items);
+      setNotifUnreadCount(unreadCount);
     } catch (e: unknown) {
       const message = e instanceof Error ? e.message : String(e);
       setNotifErr(message);
@@ -123,6 +128,42 @@ export default function BrandShell({
   function openNotifications() {
     setNotifOpen(true);
     void loadNotifications();
+  }
+
+  async function markNotificationRead(id: string) {
+    const res = await fetch("/api/notifications", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "READ", id }),
+    });
+    const j = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      const msg = typeof j?.error === "string" ? j.error : `Failed (${res.status})`;
+      throw new Error(msg);
+    }
+    const unreadCount = typeof j?.unreadCount === "number" ? j.unreadCount : 0;
+    setNotifUnreadCount(unreadCount);
+    setNotifItems((prev) =>
+      prev.map((item) =>
+        item.id === id && item.readAt === null ? { ...item, readAt: new Date().toISOString() } : item
+      )
+    );
+  }
+
+  async function dismissNotificationItem(id: string) {
+    const res = await fetch("/api/notifications", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id }),
+    });
+    const j = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      const msg = typeof j?.error === "string" ? j.error : `Failed (${res.status})`;
+      throw new Error(msg);
+    }
+    const unreadCount = typeof j?.unreadCount === "number" ? j.unreadCount : 0;
+    setNotifUnreadCount(unreadCount);
+    setNotifItems((prev) => prev.filter((item) => item.id !== id));
   }
 
   const DrawerContent = (
@@ -217,11 +258,11 @@ export default function BrandShell({
 
           <IconButton aria-label="notifications" onClick={openNotifications}>
             <Badge
-              badgeContent={notifItems.length}
+              badgeContent={notifUnreadCount}
               color="error"
               overlap="circular"
               max={99}
-              invisible={notifItems.length === 0}
+              invisible={notifUnreadCount === 0}
             >
               <NotificationsRoundedIcon />
             </Badge>
@@ -273,7 +314,13 @@ export default function BrandShell({
             {notifItems.map((item) => (
               <ListItemButton
                 key={item.id}
-                onClick={() => {
+                onClick={async () => {
+                  try {
+                    if (!item.readAt) await markNotificationRead(item.id);
+                  } catch (e: unknown) {
+                    const message = e instanceof Error ? e.message : String(e);
+                    setNotifErr(message);
+                  }
                   router.push(item.href);
                   setNotifOpen(false);
                 }}
@@ -282,14 +329,32 @@ export default function BrandShell({
                 <ListItemText
                   primary={
                     <Stack direction="row" justifyContent="space-between" alignItems="center" gap={1}>
-                      <Typography variant="body1" sx={{ fontWeight: 700 }}>
+                      <Typography variant="body1" sx={{ fontWeight: item.readAt ? 600 : 800 }}>
                         {item.title}
                       </Typography>
-                      <Chip
-                        label={item.kind === "REMINDER" ? "Reminder" : "Update"}
-                        size="small"
-                        color={notificationColor(item.severity)}
-                      />
+                      <Stack direction="row" spacing={0.5} alignItems="center">
+                        {!item.readAt && <Chip label="New" size="small" color="primary" />}
+                        <Chip
+                          label={item.kind === "REMINDER" ? "Reminder" : "Update"}
+                          size="small"
+                          color={notificationColor(item.severity)}
+                        />
+                        <IconButton
+                          aria-label="dismiss notification"
+                          size="small"
+                          onClick={async (event) => {
+                            event.stopPropagation();
+                            try {
+                              await dismissNotificationItem(item.id);
+                            } catch (e: unknown) {
+                              const message = e instanceof Error ? e.message : String(e);
+                              setNotifErr(message);
+                            }
+                          }}
+                        >
+                          <CloseRoundedIcon fontSize="small" />
+                        </IconButton>
+                      </Stack>
                     </Stack>
                   }
                   secondary={

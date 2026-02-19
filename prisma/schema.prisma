@@ -18,6 +18,18 @@ enum CompletionStatus {
   REJECTED
 }
 
+enum NotificationKind {
+  REMINDER
+  UPDATE
+}
+
+enum NotificationSeverity {
+  INFO
+  SUCCESS
+  WARNING
+  ERROR
+}
+
 model Family {
   id        String   @id @default(cuid())
   name      String
@@ -51,6 +63,7 @@ model User {
   starWeeks StarWeek[]
   starExchanges StarExchange[] @relation("StarExchange_user")
   starReviews StarExchange[] @relation("StarExchange_reviewedBy")
+  notifications Notification[]
 
 }
 
@@ -117,8 +130,28 @@ model ChoreCompletion {
   approvedAt   DateTime?
   approvedById String?
   approvedBy   User?     @relation("Approval", fields: [approvedById], references: [id])
+  rejectionReason String?
 
   awardsGranted UserAward[]
+}
+
+model Notification {
+  id         String               @id @default(cuid())
+  userId     String
+  user       User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  sourceKey  String?
+  kind       NotificationKind
+  severity   NotificationSeverity
+  title      String
+  message    String
+  href       String
+  readAt     DateTime?
+  dismissedAt DateTime?
+  createdAt  DateTime             @default(now())
+  updatedAt  DateTime             @updatedAt
+
+  @@unique([userId, sourceKey])
+  @@index([userId, dismissedAt])
 }
 
 model Award {
@@ -181,4 +214,3 @@ model StarExchange {
 
   @@index([userId, status])
 }
-

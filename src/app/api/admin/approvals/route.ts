@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { createNotification } from "@/lib/notifications";
 
 async function requireAdult() {
   const session = await getServerSession(authOptions);
@@ -63,8 +64,15 @@ export async function POST(req: Request) {
   const body = await req.json().catch(() => ({}));
   const completionId = String(body?.completionId ?? "");
   const action = String(body?.action ?? ""); // "APPROVE" | "REJECT"
+  const rejectionReason = String(body?.rejectionReason ?? "").trim();
   if (!completionId) return NextResponse.json({ error: "Missing completionId" }, { status: 400 });
   if (action !== "APPROVE" && action !== "REJECT") return NextResponse.json({ error: "Invalid action" }, { status: 400 });
+  if (action === "REJECT" && !rejectionReason) {
+    return NextResponse.json({ error: "Rejection reason is required" }, { status: 400 });
+  }
+  if (rejectionReason.length > 500) {
+    return NextResponse.json({ error: "Rejection reason is too long" }, { status: 400 });
+  }
 
   const completion = await prisma.choreCompletion.findFirst({
     where: { id: completionId, status: "PENDING", choreInstance: { familyId: me.familyId } },
@@ -83,6 +91,7 @@ export async function POST(req: Request) {
         status: "APPROVED",
         approvedAt: new Date(),
         approvedBy: { connect: { id: me.id } },
+        rejectionReason: null,
       },
     });
 
@@ -117,6 +126,16 @@ export async function POST(req: Request) {
       }
     }
 
+    await createNotification({
+      userId: completion.userId,
+      sourceKey: `completion-${completionId}-approved`,
+      kind: "UPDATE",
+      severity: "SUCCESS",
+      title: "Chore approved",
+      message: "Your parent approved your chore completion. Great work!",
+      href: "/app/my-chores",
+    });
+
     return NextResponse.json({ ok: true, status: "APPROVED" });
   }
 
@@ -128,7 +147,18 @@ export async function POST(req: Request) {
       // If approval fields exist, clear them.
       approvedAt: null,
       approvedBy: { disconnect: true },
+      rejectionReason,
     },
+  });
+
+  await createNotification({
+    userId: completion.userId,
+    sourceKey: `completion-${completionId}-rejected`,
+    kind: "UPDATE",
+    severity: "ERROR",
+    title: "Chore rejected",
+    message: `Parent feedback: ${rejectionReason}`,
+    href: "/app/my-chores",
   });
 
   return NextResponse.json({ ok: true, status: "REJECTED" });

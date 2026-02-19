@@ -64,13 +64,14 @@ export async function POST(req: Request) {
   const isKid = user.role === "KID";
   const status = isKid ? "PENDING" : "APPROVED";
 
-  // If already completed today, just return current status
+  // If already completed today with PENDING/APPROVED, return current status.
+  // If latest status is REJECTED, allow a new submission.
   const existingCompletion = await prisma.choreCompletion.findFirst({
     where: { choreInstanceId: inst.id, userId: user.id },
     orderBy: { completedAt: "desc" },
     select: { id: true, status: true },
   });
-  if (existingCompletion) {
+  if (existingCompletion && existingCompletion.status !== "REJECTED") {
     return NextResponse.json({ ok: true, completionId: existingCompletion.id, status: existingCompletion.status });
   }
 
