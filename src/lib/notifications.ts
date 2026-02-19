@@ -63,39 +63,34 @@ export async function createNotification(input: CreateNotificationInput) {
     },
   });
 
-  if (!existing) {
-    return prisma.notification.create({
-      data: {
-        userId: input.userId,
-        sourceKey,
-        kind: input.kind,
-        severity: input.severity,
-        title: input.title,
-        message: input.message,
-        href: input.href,
-        readAt: forceUnread ? null : undefined,
-      },
-      select: { id: true },
-    });
-  }
-
   const changed =
+    !existing ||
     existing.kind !== input.kind ||
     existing.severity !== input.severity ||
     existing.title !== input.title ||
     existing.message !== input.message ||
     existing.href !== input.href;
 
-  return prisma.notification.update({
-    where: { id: existing.id },
-    data: {
+  return prisma.notification.upsert({
+    where: { userId_sourceKey: { userId: input.userId, sourceKey } },
+    create: {
+      userId: input.userId,
+      sourceKey,
+      kind: input.kind,
+      severity: input.severity,
+      title: input.title,
+      message: input.message,
+      href: input.href,
+      readAt: forceUnread ? null : undefined,
+    },
+    update: {
       kind: input.kind,
       severity: input.severity,
       title: input.title,
       message: input.message,
       href: input.href,
       dismissedAt: null,
-      readAt: forceUnread || changed ? null : existing.readAt,
+      readAt: forceUnread || changed ? null : existing?.readAt,
     },
     select: { id: true },
   });
@@ -106,45 +101,25 @@ async function upsertReminder(
   sourceKey: string,
   payload: ReminderPayload | null
 ) {
-  const existing = await prisma.notification.findUnique({
-    where: { userId_sourceKey: { userId, sourceKey } },
-    select: {
-      id: true,
-      kind: true,
-      severity: true,
-      title: true,
-      message: true,
-      href: true,
-      readAt: true,
-      dismissedAt: true,
-    },
-  });
-
   if (!payload) {
-    if (existing) {
-      await prisma.notification.delete({ where: { id: existing.id } });
-    }
-    return;
-  }
-
-  if (!existing) {
-    await prisma.notification.create({
-      data: {
-        userId,
-        sourceKey,
-        kind: "REMINDER",
-        severity: payload.severity,
-        title: payload.title,
-        message: payload.message,
-        href: payload.href,
-      },
+    await prisma.notification.deleteMany({
+      where: { userId, sourceKey },
     });
     return;
   }
 
-  await prisma.notification.update({
-    where: { id: existing.id },
-    data: {
+  await prisma.notification.upsert({
+    where: { userId_sourceKey: { userId, sourceKey } },
+    create: {
+      userId,
+      sourceKey,
+      kind: "REMINDER",
+      severity: payload.severity,
+      title: payload.title,
+      message: payload.message,
+      href: payload.href,
+    },
+    update: {
       kind: "REMINDER",
       severity: payload.severity,
       title: payload.title,
