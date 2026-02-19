@@ -66,6 +66,7 @@ export default function BrandShell({
 }) {
   const pathname = usePathname();
   const router = useRouter();
+  const isKidView = role === "KID";
   const [open, setOpen] = React.useState(false);
   const [notifOpen, setNotifOpen] = React.useState(false);
   const [notifLoading, setNotifLoading] = React.useState(false);
@@ -74,9 +75,9 @@ export default function BrandShell({
   const [notifUnreadCount, setNotifUnreadCount] = React.useState(0);
 
   const nav: NavItem[] = [
-    { label: "My chores", href: "/app/my-chores", icon: <ChecklistRoundedIcon /> },
-    { label: "Awards", href: "/app/awards", icon: <EmojiEventsRoundedIcon /> },
-    { label: "Leaderboard", href: "/app/leaderboard", icon: <LeaderboardRoundedIcon /> },
+    { label: isKidView ? "Today's chores" : "My chores", href: "/app/my-chores", icon: <ChecklistRoundedIcon /> },
+    { label: isKidView ? "Stars & rewards" : "Awards", href: "/app/awards", icon: <EmojiEventsRoundedIcon /> },
+    { label: isKidView ? "Scoreboard" : "Leaderboard", href: "/app/leaderboard", icon: <LeaderboardRoundedIcon /> },
     { label: "Admin", href: "/app/admin/chores", icon: <AdminPanelSettingsRoundedIcon />, show: role === "ADULT" },
     { label: "Approvals", href: "/app/admin/approvals", icon: <FactCheckRoundedIcon />, show: role === "ADULT" },
     { label: "Star exchanges", href: "/app/admin/stars", icon: <AutoAwesomeRoundedIcon />, show: role === "ADULT" },
@@ -166,6 +167,24 @@ export default function BrandShell({
     setNotifItems((prev) => prev.filter((item) => item.id !== id));
   }
 
+  async function markAllNotificationItemsRead() {
+    const res = await fetch("/api/notifications", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "READ_ALL" }),
+    });
+    const j = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      const msg = typeof j?.error === "string" ? j.error : `Failed (${res.status})`;
+      throw new Error(msg);
+    }
+    const unreadCount = typeof j?.unreadCount === "number" ? j.unreadCount : 0;
+    setNotifUnreadCount(unreadCount);
+    setNotifItems((prev) =>
+      prev.map((item) => (item.readAt ? item : { ...item, readAt: new Date().toISOString() }))
+    );
+  }
+
   const DrawerContent = (
     <Box sx={{ width: 280, p: 2 }}>
       <Stack direction="row" spacing={1.5} alignItems="center" sx={{ pb: 1 }}>
@@ -250,7 +269,7 @@ export default function BrandShell({
                 Family Chores
               </Typography>
               <Typography variant="body2" color="text.secondary" noWrap>
-                {role === "ADULT" ? "Parent mode" : "Kid mode"}
+                {role === "ADULT" ? "Parent mode" : "Kid view"}
                 {username ? ` • @${username}` : ""}
               </Typography>
             </Box>
@@ -278,15 +297,36 @@ export default function BrandShell({
         <Box sx={{ width: 360, p: 2 }}>
           <Stack direction="row" justifyContent="space-between" alignItems="center">
             <Typography variant="h6" sx={{ fontWeight: 800 }}>
-              Notifications
+              {isKidView ? "Messages" : "Notifications"}
             </Typography>
-            <IconButton aria-label="refresh notifications" onClick={() => void loadNotifications()}>
-              <RefreshRoundedIcon />
-            </IconButton>
+            <Stack direction="row" spacing={0.5} alignItems="center">
+              <Button
+                size="small"
+                disabled={notifLoading || notifUnreadCount === 0}
+                onClick={async () => {
+                  try {
+                    await markAllNotificationItemsRead();
+                  } catch (e: unknown) {
+                    const message = e instanceof Error ? e.message : String(e);
+                    setNotifErr(message);
+                  }
+                }}
+              >
+                Mark all read
+              </Button>
+              <IconButton aria-label="refresh notifications" onClick={() => void loadNotifications()}>
+                <RefreshRoundedIcon />
+              </IconButton>
+            </Stack>
           </Stack>
 
           <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
-            In-app reminders and recent updates.
+            {isKidView ? "Reminders and updates for you." : "In-app reminders and recent updates."}
+          </Typography>
+          <Typography variant="caption" color="text.secondary" sx={{ mt: 0.25, display: "block" }}>
+            {isKidView
+              ? "Tap a message to open it and mark it as read."
+              : "Open a notification to mark it read, or use Mark all read."}
           </Typography>
 
           <Divider sx={{ my: 1.5 }} />
@@ -300,13 +340,13 @@ export default function BrandShell({
           {notifLoading && (
             <Stack direction="row" spacing={1.5} alignItems="center" sx={{ py: 1 }}>
               <CircularProgress size={18} />
-              <Typography variant="body2">Loading notifications…</Typography>
+              <Typography variant="body2">{isKidView ? "Loading messages..." : "Loading notifications..."}</Typography>
             </Stack>
           )}
 
           {!notifLoading && notifItems.length === 0 && (
             <Typography variant="body2" color="text.secondary">
-              You&apos;re all caught up.
+              {isKidView ? "No new messages." : "You're all caught up."}
             </Typography>
           )}
 
@@ -324,18 +364,43 @@ export default function BrandShell({
                   router.push(item.href);
                   setNotifOpen(false);
                 }}
-                sx={{ alignItems: "flex-start", borderRadius: 2, mb: 0.75 }}
+                sx={{
+                  alignItems: "flex-start",
+                  borderRadius: 2,
+                  mb: 0.75,
+                  borderWidth: 1,
+                  borderStyle: "solid",
+                  borderColor: item.readAt ? "transparent" : "primary.light",
+                  bgcolor: item.readAt ? "transparent" : "rgba(25,118,210,0.08)",
+                  opacity: item.readAt ? 0.8 : 1,
+                  "&:hover": {
+                    bgcolor: item.readAt ? "rgba(0,0,0,0.04)" : "rgba(25,118,210,0.14)",
+                  },
+                }}
               >
                 <ListItemText
                   primary={
                     <Stack direction="row" justifyContent="space-between" alignItems="center" gap={1}>
-                      <Typography variant="body1" sx={{ fontWeight: item.readAt ? 600 : 800 }}>
-                        {item.title}
-                      </Typography>
+                      <Stack direction="row" spacing={0.75} alignItems="center" sx={{ minWidth: 0 }}>
+                        {!item.readAt && (
+                          <Box
+                            sx={{
+                              width: 8,
+                              height: 8,
+                              borderRadius: "50%",
+                              bgcolor: "primary.main",
+                              flexShrink: 0,
+                            }}
+                          />
+                        )}
+                        <Typography variant="body1" sx={{ fontWeight: item.readAt ? 600 : 900 }} noWrap>
+                          {item.title}
+                        </Typography>
+                      </Stack>
                       <Stack direction="row" spacing={0.5} alignItems="center">
                         {!item.readAt && <Chip label="New" size="small" color="primary" />}
                         <Chip
-                          label={item.kind === "REMINDER" ? "Reminder" : "Update"}
+                          label={item.kind === "REMINDER" ? (isKidView ? "To do" : "Reminder") : "Update"}
                           size="small"
                           color={notificationColor(item.severity)}
                         />

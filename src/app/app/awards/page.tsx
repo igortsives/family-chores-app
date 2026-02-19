@@ -63,13 +63,22 @@ export default function AwardsPage() {
   }
 
   const role = data?.me?.role as "ADULT" | "KID" | undefined;
+  const isKidView = role === "KID";
+
+  function exchangeStatusLabel(status: Exchange["status"]) {
+    if (status === "PENDING") return "Waiting";
+    if (status === "REJECTED") return "Not approved";
+    return "Approved";
+  }
 
   return (
     <Stack spacing={2}>
       <Box>
-        <Typography variant="h4">Awards</Typography>
+        <Typography variant="h4">{isKidView ? "Stars & rewards" : "Awards"}</Typography>
         <Typography color="text.secondary">
-          Weekly Stars: complete all assigned chores for the week to earn a Star.
+          {isKidView
+            ? "Finish all your chores this week to earn 1 star."
+            : "Weekly stars are earned when assigned chores are fully completed and approved."}
         </Typography>
       </Box>
 
@@ -85,14 +94,14 @@ export default function AwardsPage() {
               alignItems={{ xs: "flex-start", sm: "center" }}
             >
               <Box>
-                <Typography variant="h6">Star balance</Typography>
-                <Typography color="text.secondary">Earned – exchanged</Typography>
+                <Typography variant="h6">Your stars</Typography>
+                <Typography color="text.secondary">Stars earned minus stars spent</Typography>
               </Box>
 
               <Stack direction="row" spacing={1} alignItems="center">
                 <Chip label={`${data.balance} ⭐`} color="primary" />
                 <Button variant="contained" onClick={() => setOpen(true)} disabled={data.balance <= 0}>
-                  Exchange stars
+                  Trade stars
                 </Button>
               </Stack>
             </Stack>
@@ -108,7 +117,7 @@ export default function AwardsPage() {
 
       <Card variant="outlined">
         <CardContent>
-          <Typography variant="h6">Stars earned by week</Typography>
+          <Typography variant="h6">Stars by week</Typography>
           <Divider sx={{ my: 1.5 }} />
           <Stack spacing={1}>
             {(data?.weeks as StarWeek[] | undefined)?.length ? (
@@ -128,7 +137,7 @@ export default function AwardsPage() {
       {role === "KID" && (
         <Card variant="outlined">
           <CardContent>
-            <Typography variant="h6">Exchange requests</Typography>
+            <Typography variant="h6">Your star requests</Typography>
             <Divider sx={{ my: 1.5 }} />
             <Stack spacing={1}>
               {(data?.requests as Exchange[] | undefined)?.length ? (
@@ -141,20 +150,20 @@ export default function AwardsPage() {
                     gap={1}
                   >
                     <Typography>
-                      {r.stars} ⭐ — {r.note || "Exchange request"}{" "}
+                      {r.stars} ⭐ - {r.note || "Star request"}{" "}
                       <Typography component="span" color="text.secondary">
                         ({String(r.requestedAt).slice(0, 19).replace("T", " ")})
                       </Typography>
                     </Typography>
                     <Chip
-                      label={r.status}
+                      label={exchangeStatusLabel(r.status)}
                       color={r.status === "APPROVED" ? "success" : r.status === "REJECTED" ? "error" : "warning"}
                       size="small"
                     />
                   </Stack>
                 ))
               ) : (
-                <Typography color="text.secondary">No exchange requests yet.</Typography>
+                <Typography color="text.secondary">No star requests yet.</Typography>
               )}
             </Stack>
           </CardContent>
@@ -162,11 +171,11 @@ export default function AwardsPage() {
       )}
 
       <Dialog open={open} onClose={() => setOpen(false)} fullWidth maxWidth="sm">
-        <DialogTitle>Exchange Stars</DialogTitle>
+        <DialogTitle>Trade stars</DialogTitle>
         <DialogContent>
           <Stack spacing={2} sx={{ mt: 1 }}>
             <TextField
-              label="Stars to exchange"
+              label="How many stars?"
               type="number"
               value={stars}
               onChange={(e) => setStars(Math.max(1, Number(e.target.value)))}
@@ -174,7 +183,7 @@ export default function AwardsPage() {
               fullWidth
             />
             <TextField
-              label="What are you exchanging for? (optional)"
+              label="What do you want? (optional)"
               value={note}
               onChange={(e) => setNote(e.target.value)}
               fullWidth
@@ -186,7 +195,7 @@ export default function AwardsPage() {
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setOpen(false)}>Cancel</Button>
-          <Button variant="contained" onClick={requestExchange}>Request</Button>
+          <Button variant="contained" onClick={requestExchange}>Send request</Button>
         </DialogActions>
       </Dialog>
     </Stack>

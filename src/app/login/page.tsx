@@ -92,7 +92,7 @@ export default function LoginPage() {
                     Family Chores
                   </Typography>
                   <Typography color="text.secondary" sx={{ mt: 0.25 }}>
-                    Track chores, earn rewards, build streaks.
+                    Finish chores, earn stars, unlock rewards.
                   </Typography>
                 </Box>
               </Stack>
@@ -104,7 +104,7 @@ export default function LoginPage() {
                   Sign in
                 </Typography>
                 <Typography color="text.secondary">
-                  Use your username and password.
+                  Enter your username and password.
                 </Typography>
               </Box>
 
@@ -148,7 +148,7 @@ export default function LoginPage() {
                   </Button>
 
                   <Typography variant="body2" color="text.secondary" sx={{ textAlign: "center", mt: 0.5 }}>
-                    Parents manage chores and approvals. Kids can view and complete chores.
+                    Kids mark chores done. Parents check and approve.
                   </Typography>
                 </Stack>
               </Box>

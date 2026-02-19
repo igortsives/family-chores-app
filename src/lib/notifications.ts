@@ -261,8 +261,8 @@ async function syncKidReminders(userId: string, familyId: string) {
     rejected > 0
       ? {
           severity: "ERROR",
-          title: "Chores need attention",
-          message: `${rejected} chore ${rejected === 1 ? "was" : "were"} rejected and needs updates.`,
+          title: "Try these chores again",
+          message: `${rejected} chore${rejected === 1 ? "" : "s"} need${rejected === 1 ? "s" : ""} another try.`,
           href: "/app/my-chores",
         }
       : null
@@ -274,8 +274,8 @@ async function syncKidReminders(userId: string, familyId: string) {
     notDone > 0
       ? {
           severity: "WARNING",
-          title: "Today's chores remaining",
-          message: `${notDone} chore ${notDone === 1 ? "is" : "are"} still not done today.`,
+          title: "Chores left today",
+          message: `You still have ${notDone} chore${notDone === 1 ? "" : "s"} left today.`,
           href: "/app/my-chores",
         }
       : null
@@ -287,8 +287,8 @@ async function syncKidReminders(userId: string, familyId: string) {
     pending > 0
       ? {
           severity: "INFO",
-          title: "Waiting for parent approval",
-          message: `${pending} chore ${pending === 1 ? "is" : "are"} pending parent review.`,
+          title: "Waiting for parent check",
+          message: `${pending} chore${pending === 1 ? "" : "s"} waiting for parent review.`,
           href: "/app/my-chores",
         }
       : null
@@ -303,8 +303,8 @@ async function syncKidReminders(userId: string, familyId: string) {
     pendingExchangeCount > 0
       ? {
           severity: "INFO",
-          title: "Exchange request pending",
-          message: `${pendingExchangeCount} exchange request${pendingExchangeCount === 1 ? " is" : "s are"} waiting for review.`,
+          title: "Star request waiting",
+          message: `${pendingExchangeCount} star request${pendingExchangeCount === 1 ? "" : "s"} waiting for review.`,
           href: "/app/awards",
         }
       : null

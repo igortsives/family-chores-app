@@ -131,8 +131,8 @@ export async function POST(req: Request) {
       sourceKey: `completion-${completionId}-approved`,
       kind: "UPDATE",
       severity: "SUCCESS",
-      title: "Chore approved",
-      message: "Your parent approved your chore completion. Great work!",
+      title: "Great job! Approved",
+      message: "Nice work! Your parent approved this chore.",
       href: "/app/my-chores",
     });
 
@@ -156,8 +156,8 @@ export async function POST(req: Request) {
     sourceKey: `completion-${completionId}-rejected`,
     kind: "UPDATE",
     severity: "ERROR",
-    title: "Chore rejected",
-    message: `Parent feedback: ${rejectionReason}`,
+    title: "Please try again",
+    message: `Parent note: ${rejectionReason}`,
     href: "/app/my-chores",
   });
 

@@ -128,7 +128,7 @@ export async function POST(req: Request) {
   const stars = Number(body?.stars || 0);
   const note = body?.note ? String(body.note).trim() : null;
 
-  if (!Number.isFinite(stars) || stars <= 0) return NextResponse.json({ error: "Stars must be > 0" }, { status: 400 });
+  if (!Number.isFinite(stars) || stars <= 0) return NextResponse.json({ error: "Choose at least 1 star." }, { status: 400 });
 
   // Check balance
   const weeks = await prisma.starWeek.findMany({ where: { userId: me.id } });
@@ -140,7 +140,7 @@ export async function POST(req: Request) {
   const spent = spentAgg._sum.stars || 0;
   const balance = Math.max(0, earnedTotal - spent);
 
-  if (stars > balance) return NextResponse.json({ error: "Not enough stars" }, { status: 400 });
+  if (stars > balance) return NextResponse.json({ error: "You do not have enough stars for that request." }, { status: 400 });
 
   const created = await prisma.starExchange.create({
     data: { userId: me.id, stars, note, status: "PENDING" } as any,

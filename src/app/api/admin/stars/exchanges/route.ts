@@ -62,11 +62,11 @@ export async function POST(req: Request) {
     sourceKey: `exchange-${id}-${nextStatus.toLowerCase()}`,
     kind: "UPDATE",
     severity: nextStatus === "APPROVED" ? "SUCCESS" : "ERROR",
-    title: "Star exchange updated",
+    title: "Star request update",
     message:
       nextStatus === "APPROVED"
-        ? "Your star exchange request was approved."
-        : "Your star exchange request was rejected.",
+        ? "Your star request was approved."
+        : "Your star request was not approved yet.",
     href: "/app/awards",
   });
 

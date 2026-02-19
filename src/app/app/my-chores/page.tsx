@@ -31,6 +31,7 @@ export default function MyChoresPage() {
   const [rows, setRows] = React.useState<Row[] | null>(null);
   const [err, setErr] = React.useState<string | null>(null);
   const [busy, setBusy] = React.useState<Record<string, boolean>>({});
+  const isKidView = (session?.user as any)?.role === "KID";
 
   async function load() {
     setErr(null);
@@ -88,9 +89,9 @@ export default function MyChoresPage() {
 
   const statusChip = (s: string) => {
     if (s === "APPROVED") return <Chip label="Approved" color="success" size="small" />;
-    if (s === "PENDING") return <Chip label="Pending approval" color="warning" size="small" />;
-    if (s === "REJECTED") return <Chip label="Rejected" color="error" size="small" />;
-    if (s === "NOT_DONE") return <Chip label="Not done" size="small" />;
+    if (s === "PENDING") return <Chip label={isKidView ? "Waiting for parent" : "Pending approval"} color="warning" size="small" />;
+    if (s === "REJECTED") return <Chip label={isKidView ? "Try again" : "Rejected"} color="error" size="small" />;
+    if (s === "NOT_DONE") return <Chip label={isKidView ? "To do" : "Not done"} size="small" />;
     return <Chip label={s} size="small" />;
   };
 
@@ -109,9 +110,11 @@ export default function MyChoresPage() {
     <Container maxWidth="md" sx={{ py: 4 }}>
       <Stack spacing={2}>
         <Box>
-          <Typography variant="h4">My chores</Typography>
+          <Typography variant="h4">{isKidView ? "Today's chores" : "My chores"}</Typography>
           <Typography color="text.secondary">
-            Mark chores done. If you’re a kid, an adult must approve.
+            {isKidView
+              ? "Tap when you finish a chore. A parent will check it."
+              : "Mark chores done. If you're a kid, a parent must approve."}
           </Typography>
         </Box>
 
@@ -120,30 +123,39 @@ export default function MyChoresPage() {
         {!rows && !err && (
           <Stack direction="row" spacing={2} alignItems="center">
             <CircularProgress size={22} />
-            <Typography>Loading chores…</Typography>
+            <Typography>{isKidView ? "Getting your chores..." : "Loading chores..."}</Typography>
           </Stack>
         )}
 
-        {rows?.length === 0 && <Alert severity="info">No chores assigned.</Alert>}
+        {rows?.length === 0 && <Alert severity="info">{isKidView ? "No chores for now. Nice job!" : "No chores assigned."}</Alert>}
 
         {rows?.map((r) => {
-          const isKid = (session?.user as any)?.role === "KID";
           const isRejected = r.todayStatus === "REJECTED";
-          const canUndo = isKid && r.todayStatus === "PENDING" && Boolean(r.todayCompletionId);
+          const canUndo = isKidView && r.todayStatus === "PENDING" && Boolean(r.todayCompletionId);
           const disabled = busy[r.choreId] || r.todayStatus === "APPROVED" || (r.todayStatus === "PENDING" && !canUndo);
           const label = busy[r.choreId]
             ? canUndo
-              ? "Undoing…"
+              ? isKidView
+                ? "Changing back..."
+                : "Undoing..."
               : isRejected
-                ? "Resubmitting…"
-                : "Saving…"
+                ? isKidView
+                  ? "Trying again..."
+                  : "Resubmitting..."
+                : "Saving..."
             : canUndo
-              ? "Undo"
+              ? isKidView
+                ? "Not finished yet"
+                : "Undo"
               : r.todayStatus === "APPROVED"
                 ? "Done"
                 : isRejected
-                  ? "Resubmit"
-                  : "Mark done";
+                  ? isKidView
+                    ? "Try again"
+                    : "Resubmit"
+                  : isKidView
+                    ? "I finished this"
+                    : "Mark done";
 
           return (
             <Card key={r.choreId} variant="outlined">
@@ -163,7 +175,17 @@ export default function MyChoresPage() {
                       </Stack>
                       {r.todayStatus === "REJECTED" && r.todayRejectionReason && (
                         <Alert severity="error" sx={{ mt: 1.5, py: 0 }}>
-                          Parent feedback: {r.todayRejectionReason} Update and tap <b>Resubmit</b>.
+                          {isKidView ? "Parent note: " : "Parent feedback: "}
+                          {r.todayRejectionReason}{" "}
+                          {isKidView ? (
+                            <>
+                              Fix it, then tap <b>Try again</b>.
+                            </>
+                          ) : (
+                            <>
+                              Update and tap <b>Resubmit</b>.
+                            </>
+                          )}
                         </Alert>
                       )}
                     </Box>

@@ -39,10 +39,10 @@ export async function POST(req: Request) {
   });
   if (!completion) return NextResponse.json({ error: "Completion not found" }, { status: 404 });
   if (completion.status === "APPROVED") {
-    return NextResponse.json({ error: "Cannot undo after parent approval" }, { status: 400 });
+    return NextResponse.json({ error: "A parent already approved this one, so it cannot be undone." }, { status: 400 });
   }
   if (completion.status !== "PENDING") {
-    return NextResponse.json({ error: "Only pending completions can be undone" }, { status: 400 });
+    return NextResponse.json({ error: "You can undo only while it says waiting for parent." }, { status: 400 });
   }
 
   return NextResponse.json({ error: "Unable to undo completion" }, { status: 409 });

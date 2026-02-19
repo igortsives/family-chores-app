@@ -43,7 +43,10 @@ export default function LeaderboardPage() {
       <Box>
         <Typography variant="h4">Leaderboard</Typography>
         <Typography color="text.secondary">
-          Points are based on <b>approved</b> completions. Streak = consecutive days with at least one approved completion.
+          Points count after a parent approves your chores.
+        </Typography>
+        <Typography color="text.secondary">
+          Streak = days in a row with at least one approved chore.
         </Typography>
       </Box>
 
@@ -56,7 +59,7 @@ export default function LeaderboardPage() {
         </Stack>
       )}
 
-      {rows?.length === 0 && <Alert severity="info">No kids found in this family.</Alert>}
+      {rows?.length === 0 && <Alert severity="info">No kids to show yet.</Alert>}
 
       {rows?.map((r, idx) => (
         <Card key={r.kid.id} variant="outlined">
@@ -68,8 +71,8 @@ export default function LeaderboardPage() {
                     #{idx + 1} {r.kid.name || r.kid.email}
                   </Typography>
                   <Stack direction="row" spacing={1} sx={{ mt: 1 }} alignItems="center">
-                    <Chip label={`${r.points} pts`} size="small" />
-                    <Chip label={`${r.streak} day streak`} size="small" color={r.streak > 0 ? "success" : "default"} />
+                    <Chip label={`${r.points} points`} size="small" />
+                    <Chip label={`${r.streak}-day streak`} size="small" color={r.streak > 0 ? "success" : "default"} />
                   </Stack>
                 </Box>
                 {r.nextAward ? (
@@ -79,7 +82,7 @@ export default function LeaderboardPage() {
                     color="info"
                   />
                 ) : (
-                  <Chip label="All awards earned 🎉" size="small" color="success" />
+                  <Chip label="All rewards unlocked 🎉" size="small" color="success" />
                 )}
               </Stack>
 
@@ -87,7 +90,7 @@ export default function LeaderboardPage() {
 
               <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
                 {r.awardsEarned.length === 0 ? (
-                  <Typography color="text.secondary">No awards yet.</Typography>
+                  <Typography color="text.secondary">No rewards yet - keep going!</Typography>
                 ) : (
                   r.awardsEarned.map((a) => (
                     <Chip key={a.id} label={`${a.icon ?? "🏅"} ${a.name}`} size="small" />
