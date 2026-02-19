@@ -80,7 +80,7 @@ export async function POST(req: Request) {
       select: { id: true },
     });
     return NextResponse.json({ ok: true, id: created.id });
-  } catch (e: any) {
+  } catch {
     return NextResponse.json({ error: "Could not create member (email may already exist)" }, { status: 400 });
   }
 }
@@ -132,7 +132,7 @@ export async function PUT(req: Request) {
 
   try {
     await prisma.user.update({ where: { id }, data });
-  } catch (e: any) {
+  } catch {
     return NextResponse.json({ error: "Could not update (email may already exist)" }, { status: 400 });
   }
 

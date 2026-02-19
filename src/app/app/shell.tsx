@@ -13,8 +13,8 @@ export default function AppShell({ children, role, email }: { children: React.Re
             <Typography variant="caption" sx={{ opacity: 0.85 }}>{email} ({role})</Typography>
           </Box>
           <Stack direction="row" spacing={1} sx={{ flexWrap: "wrap" }}>
-            {role === "ADULT" && <Button color="inherit" component={Link} href="/app/config">Configure</Button>}
-            {role === "ADULT" && <Button color="inherit" component={Link} href="/app/approvals">Approvals</Button>}
+            {role === "ADULT" && <Button color="inherit" component={Link} href="/app/admin/chores">Configure</Button>}
+            {role === "ADULT" && <Button color="inherit" component={Link} href="/app/admin/approvals">Approvals</Button>}
             <Button color="inherit" component={Link} href="/app/my-chores">My Chores</Button>
             <Button color="inherit" component={Link} href="/app/leaderboard">Leaderboard</Button>
             <Button color="inherit" component={Link} href="/app/progress">Progress</Button>

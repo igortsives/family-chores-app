@@ -8,7 +8,7 @@ type Props = ButtonProps & { href: string };
 
 export default function LinkButton({ href, children, ...props }: Props) {
   return (
-    <Button {...props} component={NextLink} href={href}>
+    <Button {...props} href={href} LinkComponent={NextLink}>
       {children}
     </Button>
   );

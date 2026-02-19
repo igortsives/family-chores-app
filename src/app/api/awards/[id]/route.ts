@@ -9,8 +9,11 @@ const UpdateAward = z.object({
   thresholdPoints: z.number().int().min(0),
 });
 
-export async function PUT(req: Request, { params }: { params: { id: string } }) {
+type RouteContext = { params: Promise<{ id: string }> };
+
+export async function PUT(req: Request, context: RouteContext) {
   try {
+    const { id } = await context.params;
     const session = await requireAdult();
     const familyId = (session.user as any).familyId;
 
@@ -18,11 +21,11 @@ export async function PUT(req: Request, { params }: { params: { id: string } }) 
     const parsed = UpdateAward.safeParse(body);
     if (!parsed.success) return NextResponse.json({ error: "Invalid input" }, { status: 400 });
 
-    const existing = await prisma.award.findUnique({ where: { id: params.id } });
+    const existing = await prisma.award.findUnique({ where: { id } });
     if (!existing || existing.familyId !== familyId) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
     const award = await prisma.award.update({
-      where: { id: params.id },
+      where: { id },
       data: { name: parsed.data.name, icon: parsed.data.icon, thresholdPoints: parsed.data.thresholdPoints },
     });
 
@@ -35,15 +38,16 @@ export async function PUT(req: Request, { params }: { params: { id: string } }) 
   }
 }
 
-export async function DELETE(_req: Request, { params }: { params: { id: string } }) {
+export async function DELETE(_req: Request, context: RouteContext) {
   try {
+    const { id } = await context.params;
     const session = await requireAdult();
     const familyId = (session.user as any).familyId;
 
-    const existing = await prisma.award.findUnique({ where: { id: params.id } });
+    const existing = await prisma.award.findUnique({ where: { id } });
     if (!existing || existing.familyId !== familyId) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
-    await prisma.award.delete({ where: { id: params.id } });
+    await prisma.award.delete({ where: { id } });
     return NextResponse.json({ ok: true });
   } catch (e: any) {
     const msg = e?.message || "ERROR";

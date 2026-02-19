@@ -56,7 +56,7 @@ export async function GET() {
 
   const rows = kids.map((k) => {
     const points = totals.get(k.id) ?? 0;
-    const dk = Array.from(days.get(k.id) ?? new Set()).sort();
+    const dk = Array.from(days.get(k.id) ?? new Set<string>()).sort();
     const streak = computeStreak(dk);
 
     const earned = awards.filter((a) => (a.thresholdPoints ?? 0) <= points);

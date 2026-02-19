@@ -68,12 +68,16 @@ export async function POST(req: Request) {
 
   const completion = await prisma.choreCompletion.findFirst({
     where: { id: completionId, status: "PENDING", choreInstance: { familyId: me.familyId } },
-    select: { id: true },
+    select: {
+      id: true,
+      userId: true,
+      user: { select: { role: true } },
+    },
   });
   if (!completion) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
   if (action === "APPROVE") {
-    await prisma.choreCompletion.update({
+    const updated = await prisma.choreCompletion.update({
       where: { id: completionId },
       data: {
         status: "APPROVED",
@@ -81,6 +85,38 @@ export async function POST(req: Request) {
         approvedBy: { connect: { id: me.id } },
       },
     });
+
+    if (completion.user.role === "KID") {
+      const totals = await prisma.choreCompletion.aggregate({
+        where: { userId: completion.userId, status: "APPROVED" },
+        _sum: { pointsEarned: true },
+      });
+      const totalPoints = totals._sum.pointsEarned ?? 0;
+
+      const awards = await prisma.award.findMany({
+        where: { familyId: me.familyId },
+        select: { id: true, thresholdPoints: true },
+      });
+
+      const existing = await prisma.userAward.findMany({
+        where: { userId: completion.userId },
+        select: { awardId: true },
+      });
+      const existingIds = new Set(existing.map((a) => a.awardId));
+      const toGrant = awards.filter((a) => totalPoints >= a.thresholdPoints && !existingIds.has(a.id));
+
+      if (toGrant.length > 0) {
+        await prisma.userAward.createMany({
+          data: toGrant.map((a) => ({
+            userId: completion.userId,
+            awardId: a.id,
+            completionId: updated.id,
+          })),
+          skipDuplicates: true,
+        });
+      }
+    }
+
     return NextResponse.json({ ok: true, status: "APPROVED" });
   }
 

@@ -4,7 +4,6 @@ import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/prisma";
 
 export const authOptions: NextAuthOptions = {
-  trustHost: true,
   session: { strategy: "jwt" },
   pages: { signIn: "/login" },
 
@@ -31,17 +30,15 @@ export const authOptions: NextAuthOptions = {
             role: true,
             familyId: true,
             passwordHash: true,
-            // optional flags if your schema has them:
             isActive: true,
             isHidden: true,
-          } as any,
+          },
         });
 
         if (!user?.passwordHash) return null;
 
-        // If these fields exist in your Prisma schema, enforce them:
-        if (typeof (user as any).isActive === "boolean" && (user as any).isActive === false) return null;
-        if (typeof (user as any).isHidden === "boolean" && (user as any).isHidden === true) return null;
+        if (!user.isActive) return null;
+        if (user.isHidden) return null;
 
         const ok = await bcrypt.compare(password, user.passwordHash);
         if (!ok) return null;
