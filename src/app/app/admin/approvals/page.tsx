@@ -102,7 +102,7 @@ export default function ApprovalsPage() {
       {rows?.length === 0 && <Alert severity="success">No pending chores 🎉</Alert>}
 
       {rows?.map((r) => (
-        <Card key={r.id} variant="outlined">
+        <Card key={r.id} variant="outlined" data-testid={`approval-card-${r.id}`}>
           <CardContent>
             <Stack spacing={1}>
               <Stack direction="row" justifyContent="space-between" gap={2} alignItems="flex-start">
@@ -119,6 +119,7 @@ export default function ApprovalsPage() {
 
                 <Stack direction="row" spacing={1}>
                   <Button
+                    data-testid={`approval-approve-${r.id}`}
                     variant="contained"
                     disabled={busy[r.id]}
                     onClick={() => act(r.id, "APPROVE")}
@@ -126,6 +127,7 @@ export default function ApprovalsPage() {
                     Approve
                   </Button>
                   <Button
+                    data-testid={`approval-reject-${r.id}`}
                     variant="outlined"
                     color="error"
                     disabled={busy[r.id] || !(reasons[r.id] ?? "").trim()}

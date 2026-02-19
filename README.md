@@ -165,6 +165,8 @@ scripts/              # Install / update scripts
 - Logout is handled client-side to avoid redirect issues
 - Weekly star logic is Monday-based
 - Run unit tests with `npm run test:run`
+- Run E2E UI tests with `npm run test:e2e`
+- CI runs lint, unit tests, and Playwright E2E tests (with PostgreSQL + Prisma migrate/seed)
 - Product roadmap: see `ROADMAP.md`
 
 ---

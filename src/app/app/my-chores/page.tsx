@@ -158,7 +158,7 @@ export default function MyChoresPage() {
                     : "Mark done";
 
           return (
-            <Card key={r.choreId} variant="outlined">
+            <Card key={r.choreId} variant="outlined" data-testid={`chore-card-${r.choreId}`}>
               <CardContent>
                 <Stack spacing={1}>
                   <Stack direction="row" justifyContent="space-between" alignItems="flex-start" gap={2}>
@@ -191,6 +191,7 @@ export default function MyChoresPage() {
                     </Box>
 
                     <Button
+                      data-testid={`chore-action-${r.choreId}`}
                       variant={canUndo ? "outlined" : "contained"}
                       color={canUndo ? "inherit" : isRejected ? "warning" : "primary"}
                       disabled={disabled}
