@@ -13,8 +13,10 @@ import {
   DialogContent,
   DialogTitle,
   Divider,
+  LinearProgress,
   Stack,
   TextField,
+  Tooltip,
   Typography,
 } from "@mui/material";
 
@@ -26,6 +28,17 @@ type Exchange = {
   status: "PENDING" | "APPROVED" | "REJECTED";
   requestedAt: string;
 };
+
+function playfulStarProgressText(progressPctRaw: number) {
+  const progressPct = Math.max(0, Math.min(100, Number(progressPctRaw || 0)));
+  if (progressPct <= 0) return "A new star is waiting. Let’s get started!";
+
+  const bucket = Math.min(100, Math.ceil(progressPct / 25) * 25);
+  if (bucket === 25) return "Nice going! Keep it rolling.";
+  if (bucket === 50) return "Halfway there. Keep it up!";
+  if (bucket === 75) return "So close! Almost got another star.";
+  return "Star unlocked vibe! Keep the streak rolling.";
+}
 
 export default function AwardsPage() {
   const [data, setData] = React.useState<any>(null);
@@ -77,8 +90,8 @@ export default function AwardsPage() {
         <Typography variant="h4">{isKidView ? "Stars & rewards" : "Awards"}</Typography>
         <Typography color="text.secondary">
           {isKidView
-            ? "Finish all your chores this week to earn 1 star."
-            : "Weekly stars are earned when assigned chores are fully completed and approved."}
+            ? "Your score progress stacks up over time toward stars. Keep going!"
+            : "Stars build from weekly score progress and can carry over week to week."}
         </Typography>
       </Box>
 
@@ -87,32 +100,89 @@ export default function AwardsPage() {
       {data && role === "KID" && (
         <Card variant="outlined">
           <CardContent>
-            <Stack
-              direction={{ xs: "column", sm: "row" }}
-              spacing={2}
-              justifyContent="space-between"
-              alignItems={{ xs: "flex-start", sm: "center" }}
-            >
-              <Box>
-                <Typography variant="h6">Your stars</Typography>
-                <Typography color="text.secondary">Stars earned minus stars spent</Typography>
-              </Box>
+            {(() => {
+              const nextStarPct = Math.max(0, Math.min(100, Number(data.progressTowardNextStarPct ?? 0)));
+              return (
+                <Stack
+                  direction={{ xs: "column", sm: "row" }}
+                  spacing={2}
+                  justifyContent="space-between"
+                  alignItems={{ xs: "flex-start", sm: "center" }}
+                >
+                  <Box>
+                    <Typography variant="h6">Your stars</Typography>
+                    <Typography color="text.secondary">Stars earned minus stars spent</Typography>
+                    <Typography sx={{ mt: 0.5 }}>{playfulStarProgressText(nextStarPct)}</Typography>
+                    <Tooltip title={`Next star: ${nextStarPct}%`} arrow>
+                      <Box sx={{ mt: 1, maxWidth: 320 }}>
+                        <LinearProgress
+                          variant="determinate"
+                          value={nextStarPct}
+                          sx={{
+                            height: 8,
+                            borderRadius: "999px",
+                            bgcolor: "rgba(0,0,0,0.1)",
+                            "& .MuiLinearProgress-bar": {
+                              borderRadius: "999px",
+                              backgroundImage: "linear-gradient(90deg, #ffd66b 0%, #ffb343 100%)",
+                            },
+                          }}
+                        />
+                      </Box>
+                    </Tooltip>
+                  </Box>
 
-              <Stack direction="row" spacing={1} alignItems="center">
-                <Chip label={`${data.balance} ⭐`} color="primary" />
-                <Button variant="contained" onClick={() => setOpen(true)} disabled={data.balance <= 0}>
-                  Trade stars
-                </Button>
-              </Stack>
-            </Stack>
+                  <Stack direction="row" spacing={1} alignItems="center">
+                    <Chip label={`${data.balance} ⭐`} color="primary" />
+                    <Button variant="contained" onClick={() => setOpen(true)} disabled={data.balance <= 0}>
+                      Trade stars
+                    </Button>
+                  </Stack>
+                </Stack>
+              );
+            })()}
           </CardContent>
         </Card>
       )}
 
       {data && role !== "KID" && (
-        <Alert severity="info">
-          Parents approve exchanges in <b>Star exchanges</b>. Kids earn Stars weekly.
-        </Alert>
+        <Card variant="outlined">
+          <CardContent>
+            <Stack spacing={1}>
+              <Typography variant="h6">Kid star progress</Typography>
+              <Typography color="text.secondary">
+                Breakdown shown for parents only:
+                {" "}
+                carryover from prior weeks + current week progress = next star preview.
+              </Typography>
+              {(data.familyProgress as Array<any> | undefined)?.length ? (
+                <Stack spacing={1}>
+                  {data.familyProgress.map((row: any) => (
+                    <Stack
+                      key={row.kid.id}
+                      direction={{ xs: "column", sm: "row" }}
+                      justifyContent="space-between"
+                      alignItems={{ xs: "flex-start", sm: "center" }}
+                      gap={1}
+                      sx={{ p: 1, borderRadius: 1.5, bgcolor: "rgba(0,0,0,0.02)" }}
+                    >
+                      <Typography sx={{ fontWeight: 700 }}>
+                        {row.kid.name || row.kid.username || row.kid.id}
+                      </Typography>
+                      <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+                        <Chip size="small" label={`Carryover: ${row.carryoverPct}%`} />
+                        <Chip size="small" label={`This week: ${row.currentWeekPct}%`} color="primary" variant="outlined" />
+                        <Chip size="small" label={`Next star: ${row.nextStarPct}%`} color="warning" variant="outlined" />
+                      </Stack>
+                    </Stack>
+                  ))}
+                </Stack>
+              ) : (
+                <Alert severity="info">No kid progress available yet.</Alert>
+              )}
+            </Stack>
+          </CardContent>
+        </Card>
       )}
 
       <Card variant="outlined">
@@ -124,7 +194,7 @@ export default function AwardsPage() {
               data.weeks.map((w: StarWeek) => (
                 <Stack key={w.id} direction="row" justifyContent="space-between" alignItems="center">
                   <Typography>Week of {String(w.weekStart).slice(0, 10)}</Typography>
-                  <Chip label={w.earned ? "⭐ Earned" : "—"} color={w.earned ? "success" : "default"} size="small" />
+                  <Chip label={w.earned > 0 ? `${w.earned} ⭐` : "—"} color={w.earned > 0 ? "success" : "default"} size="small" />
                 </Stack>
               ))
             ) : (

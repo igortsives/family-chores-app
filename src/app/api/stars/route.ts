@@ -1,91 +1,45 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireSessionUser } from "@/lib/requireUser";
-import { addDays, startOfWeekMonday } from "@/lib/week";
-
-/**
- * Assumes your schema has:
- * - StarWeek (userId, weekStart, earned)
- * - StarExchange (userId, stars, status, note)
- * And existing chore models:
- * - choreInstance: assignedToId, scheduledFor
- * - choreCompletion: userId, choreInstanceId, status ("APPROVED")
- */
-
-async function computeStarForWeek(userId: string, weekStart: Date) {
-  const weekEnd = addDays(weekStart, 7);
-
-  // 1) Find chores assigned to this kid (weekly schedule is represented via instances + dueDate)
-  // NOTE: We use `as any` so this compiles even if your ChoreAssignment has extra fields.
-  const assignments = await (prisma as any).choreAssignment
-    .findMany({
-      where: { userId },
-      select: { choreId: true },
-    })
-    .catch(() => []);
-
-  const choreIds = Array.from(new Set((assignments || []).map((a: any) => a.choreId).filter(Boolean)));
-
-  if (choreIds.length === 0) {
-    await prisma.starWeek.upsert({
-      where: { userId_weekStart: { userId, weekStart } } as any,
-      create: { userId, weekStart, earned: 0 },
-      update: { earned: 0, computedAt: new Date() } as any,
-    });
-    return 0;
-  }
-
-  // 2) Find instances due within the week for those assigned chores
-  const instances = await prisma.choreInstance.findMany({
-    where: {
-      choreId: { in: choreIds },
-      dueDate: { gte: weekStart, lt: weekEnd },
-    } as any,
-    select: { id: true },
-  });
-
-  if (instances.length === 0) {
-    await prisma.starWeek.upsert({
-      where: { userId_weekStart: { userId, weekStart } } as any,
-      create: { userId, weekStart, earned: 0 },
-      update: { earned: 0, computedAt: new Date() } as any,
-    });
-    return 0;
-  }
-
-  const ids = instances.map((x) => x.id);
-
-  // 3) Count APPROVED completions for this kid for those instances
-  const approvedCount = await prisma.choreCompletion.count({
-    where: {
-      userId,
-      choreInstanceId: { in: ids },
-      status: "APPROVED",
-    } as any,
-  });
-
-  const earned = approvedCount === ids.length ? 1 : 0;
-
-  await prisma.starWeek.upsert({
-    where: { userId_weekStart: { userId, weekStart } } as any,
-    create: { userId, weekStart, earned },
-    update: { earned, computedAt: new Date() } as any,
-  });
-
-  return earned;
-}
+import { recomputeStarWeeksForKid } from "@/lib/starProgress";
 
 export async function GET() {
   const auth = await requireSessionUser();
   if ("status" in auth) return NextResponse.json({ error: auth.error }, { status: auth.status });
   const { me } = auth;
 
-  const now = new Date();
-  const currentWeekStart = startOfWeekMonday(now);
-  const lastWeekStart = addDays(currentWeekStart, -7);
+  let progressTowardNextStar = 0;
+  let carryoverProgress = 0;
+  let currentWeekProgress = 0;
+  let familyProgress: Array<{
+    kid: { id: string; name: string | null; username: string | null };
+    carryoverPct: number;
+    currentWeekPct: number;
+    nextStarPct: number;
+  }> = [];
 
   if (me.role === "KID") {
-    await computeStarForWeek(me.id, lastWeekStart);
+    const out = await recomputeStarWeeksForKid(me.id, me.familyId);
+    carryoverProgress = out.carryoverProgress;
+    currentWeekProgress = out.currentWeekProgress;
+    progressTowardNextStar = out.progressTowardNextStar;
+  } else if (me.role === "ADULT") {
+    const kids = await prisma.user.findMany({
+      where: { familyId: me.familyId, role: "KID", isHidden: false, isActive: true },
+      select: { id: true, name: true, username: true },
+      orderBy: [{ name: "asc" }, { username: "asc" }],
+    });
+    familyProgress = await Promise.all(
+      kids.map(async (kid) => {
+        const out = await recomputeStarWeeksForKid(kid.id, me.familyId);
+        return {
+          kid,
+          carryoverPct: Math.round(out.carryoverProgress * 100),
+          currentWeekPct: Math.round(out.currentWeekProgress * 100),
+          nextStarPct: Math.round(out.progressTowardNextStar * 100),
+        };
+      }),
+    );
   }
 
   const weeks = await prisma.starWeek.findMany({
@@ -113,6 +67,10 @@ export async function GET() {
     me: { id: me.id, role: me.role, username: me.username, name: me.name },
     weeks,
     balance,
+    carryoverProgressPct: Math.round(carryoverProgress * 100),
+    currentWeekProgressPct: Math.round(currentWeekProgress * 100),
+    progressTowardNextStarPct: Math.round(progressTowardNextStar * 100),
+    familyProgress,
     requests,
   });
 }
@@ -129,6 +87,8 @@ export async function POST(req: Request) {
   const note = body?.note ? String(body.note).trim() : null;
 
   if (!Number.isFinite(stars) || stars <= 0) return NextResponse.json({ error: "Choose at least 1 star." }, { status: 400 });
+
+  await recomputeStarWeeksForKid(me.id, me.familyId);
 
   // Check balance
   const weeks = await prisma.starWeek.findMany({ where: { userId: me.id } });

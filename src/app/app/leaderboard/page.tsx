@@ -11,11 +11,23 @@ import {
   Divider,
   Stack,
   Typography,
+  useMediaQuery,
 } from "@mui/material";
+import { useTheme } from "@mui/material/styles";
 
 type Award = { id: string; name: string; icon: string | null; thresholdPoints: number };
 type Row = {
   kid: { id: string; name: string | null; email: string };
+  score: number;
+  scorePct: number;
+  completionRate: number;
+  consistencyRate: number;
+  streakFactor: number;
+  expectedDue: number;
+  approvedCount: number;
+  possibleActiveDays: number;
+  activeDays: number;
+  weeklyPoints: number;
   points: number;
   streak: number;
   awardsEarned: Award[];
@@ -25,6 +37,8 @@ type Row = {
 export default function LeaderboardPage() {
   const [rows, setRows] = React.useState<Row[] | null>(null);
   const [err, setErr] = React.useState<string | null>(null);
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
 
   async function load() {
     setErr(null);
@@ -43,10 +57,12 @@ export default function LeaderboardPage() {
       <Box>
         <Typography variant="h4">Leaderboard</Typography>
         <Typography color="text.secondary">
-          Points count after a parent approves your chores.
+          Weekly ranking uses a hybrid score:
+          {" "}
+          70% completion rate + 20% consistency + 10% streak factor.
         </Typography>
         <Typography color="text.secondary">
-          Streak = days in a row with at least one approved chore.
+          Weekly coins are shown for motivation and rewards, but do not change leaderboard rank.
         </Typography>
       </Box>
 
@@ -65,17 +81,77 @@ export default function LeaderboardPage() {
         <Card key={r.kid.id} variant="outlined">
           <CardContent>
             <Stack spacing={1}>
-              <Stack direction="row" justifyContent="space-between" alignItems="center" gap={2}>
-                <Box>
+              <Stack
+                direction={isMobile ? "column" : "row"}
+                justifyContent="space-between"
+                alignItems={isMobile ? "stretch" : "center"}
+                gap={1}
+              >
+                <Box sx={{ minWidth: 0 }}>
                   <Typography variant="h6">
                     #{idx + 1} {r.kid.name || r.kid.email}
                   </Typography>
-                  <Stack direction="row" spacing={1} sx={{ mt: 1 }} alignItems="center">
-                    <Chip label={`${r.points} points`} size="small" />
-                    <Chip label={`${r.streak}-day streak`} size="small" color={r.streak > 0 ? "success" : "default"} />
-                  </Stack>
+                  {isMobile ? (
+                    <Box
+                      sx={{
+                        mt: 1,
+                        display: "grid",
+                        gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+                        gap: 0.5,
+                      }}
+                    >
+                      <Chip
+                        label={`Score ${r.scorePct}%`}
+                        size="small"
+                        color="warning"
+                        variant="outlined"
+                        sx={{ justifyContent: "center" }}
+                      />
+                      <Chip
+                        label={`Complete ${Math.round(r.completionRate * 100)}%`}
+                        size="small"
+                        sx={{ justifyContent: "center" }}
+                      />
+                      <Chip
+                        label={`Consistency ${Math.round(r.consistencyRate * 100)}%`}
+                        size="small"
+                        sx={{ justifyContent: "center" }}
+                      />
+                      <Chip
+                        label={`${r.weeklyPoints} coins`}
+                        size="small"
+                        color="primary"
+                        variant="outlined"
+                        sx={{ justifyContent: "center" }}
+                      />
+                    </Box>
+                  ) : (
+                    <Stack direction="row" spacing={1} sx={{ mt: 1 }} alignItems="center">
+                      <Chip label={`${r.scorePct}% score`} size="small" color="warning" variant="outlined" />
+                      <Chip label={`${Math.round(r.completionRate * 100)}% complete`} size="small" />
+                      <Chip label={`${Math.round(r.consistencyRate * 100)}% consistency`} size="small" />
+                      <Chip label={`${r.weeklyPoints} weekly coins`} size="small" color="primary" variant="outlined" />
+                    </Stack>
+                  )}
                 </Box>
-                {r.nextAward ? (
+                {isMobile ? (
+                  <Box
+                    sx={{
+                      border: 1,
+                      borderColor: "divider",
+                      borderRadius: 1,
+                      px: 1,
+                      py: 0.75,
+                      bgcolor: "action.hover",
+                    }}
+                  >
+                    <Typography variant="caption" color="text.secondary" sx={{ display: "block" }}>
+                      {r.nextAward
+                        ? `Next reward: ${r.nextAward.icon ?? "🏅"} ${r.nextAward.name} at ${r.nextAward.thresholdPoints} points`
+                        : "All rewards unlocked"}
+                    </Typography>
+                  </Box>
+                ) : r.nextAward ? (
                   <Chip
                     label={`Next: ${r.nextAward.icon ?? "🏅"} ${r.nextAward.name} @ ${r.nextAward.thresholdPoints} pts`}
                     size="small"
@@ -84,6 +160,15 @@ export default function LeaderboardPage() {
                 ) : (
                   <Chip label="All rewards unlocked 🎉" size="small" color="success" />
                 )}
+              </Stack>
+
+              <Divider />
+
+              <Stack direction={isMobile ? "column" : "row"} spacing={1} flexWrap="wrap" useFlexGap>
+                <Typography color="text.secondary">
+                  {r.approvedCount}/{r.expectedDue} chores approved this week, active on {r.activeDays}/{r.possibleActiveDays} assigned days.
+                </Typography>
+                <Chip label={`${r.streak}-day streak`} size="small" color={r.streak > 0 ? "success" : "default"} />
               </Stack>
 
               <Divider />

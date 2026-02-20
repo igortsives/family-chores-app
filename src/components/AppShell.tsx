@@ -29,7 +29,7 @@ type NavItem = { href: string; label: string; adultOnly?: boolean };
 const NAV: NavItem[] = [
   { href: "/app/my-chores", label: "My chores" },
   { href: "/app/leaderboard", label: "Leaderboard" },
-  { href: "/app/admin/chores", label: "Parent admin", adultOnly: true },
+  { href: "/app/admin/chores", label: "Chores", adultOnly: true },
   { href: "/app/admin/family", label: "Family", adultOnly: true },
   { href: "/app/admin/approvals", label: "Approvals", adultOnly: true },
 ];

@@ -4,6 +4,15 @@ import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import bcrypt from "bcryptjs";
 
+function normalizeAvatarUrl(value: unknown): string | null | undefined {
+  if (value === undefined) return undefined;
+  if (value === null) return null;
+  const v = String(value).trim();
+  if (!v) return null;
+  if (v.length > 2_000_000) throw new Error("Profile image is too large");
+  return v;
+}
+
 async function requireAdult() {
   const session = await getServerSession(authOptions);
   const uid = (session?.user as any)?.id as string | undefined;
@@ -32,6 +41,7 @@ export async function GET() {
       username: true,
       email: true,
       name: true,
+      avatarUrl: true,
       role: true,
       // optional if your schema has them:
       isActive: true,
@@ -55,6 +65,12 @@ export async function POST(req: Request) {
   const name = body?.name ? String(body.name).trim() : null;
   const role = body?.role === "ADULT" ? "ADULT" : "KID";
   const password = String(body?.password ?? "");
+  let avatarUrl: string | null = null;
+  try {
+    avatarUrl = normalizeAvatarUrl(body?.avatarUrl) ?? null;
+  } catch (e: any) {
+    return NextResponse.json({ error: e?.message || "Invalid profile image" }, { status: 400 });
+  }
 
   if (!username) return NextResponse.json({ error: "Username required" }, { status: 400 });
   if (!email) return NextResponse.json({ error: "Email required" }, { status: 400 });
@@ -72,6 +88,7 @@ export async function POST(req: Request) {
         username,
         email,
         name,
+        avatarUrl,
         role,
         passwordHash,
         isActive: true,
@@ -107,10 +124,17 @@ export async function PUT(req: Request) {
   const isActive = typeof body?.isActive === "boolean" ? body.isActive : undefined;
   const isHidden = typeof body?.isHidden === "boolean" ? body.isHidden : undefined;
   const password = body?.password ? String(body.password) : "";
+  let avatarUrl: string | null | undefined = undefined;
+  try {
+    avatarUrl = normalizeAvatarUrl(body?.avatarUrl);
+  } catch (e: any) {
+    return NextResponse.json({ error: e?.message || "Invalid profile image" }, { status: 400 });
+  }
 
   const data: any = {};
   if (email !== undefined) data.email = email;
   if (name !== undefined) data.name = name || null;
+  if (avatarUrl !== undefined) data.avatarUrl = avatarUrl;
   if (role !== undefined) data.role = role;
   if (isActive !== undefined) data.isActive = isActive;
   if (isHidden !== undefined) data.isHidden = isHidden;

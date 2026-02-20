@@ -21,6 +21,7 @@ import {
   ListItemText,
   Stack,
   Toolbar,
+  Tooltip,
   Typography,
 } from "@mui/material";
 
@@ -28,14 +29,17 @@ import MenuRoundedIcon from "@mui/icons-material/MenuRounded";
 import ChecklistRoundedIcon from "@mui/icons-material/ChecklistRounded";
 import EmojiEventsRoundedIcon from "@mui/icons-material/EmojiEventsRounded";
 import LeaderboardRoundedIcon from "@mui/icons-material/LeaderboardRounded";
-import AdminPanelSettingsRoundedIcon from "@mui/icons-material/AdminPanelSettingsRounded";
+import AssignmentRoundedIcon from "@mui/icons-material/AssignmentRounded";
 import GroupRoundedIcon from "@mui/icons-material/GroupRounded";
 import FactCheckRoundedIcon from "@mui/icons-material/FactCheckRounded";
 import AutoAwesomeRoundedIcon from "@mui/icons-material/AutoAwesomeRounded";
+import QueryStatsRoundedIcon from "@mui/icons-material/QueryStatsRounded";
 import LogoutRoundedIcon from "@mui/icons-material/LogoutRounded";
 import NotificationsRoundedIcon from "@mui/icons-material/NotificationsRounded";
 import RefreshRoundedIcon from "@mui/icons-material/RefreshRounded";
 import CloseRoundedIcon from "@mui/icons-material/CloseRounded";
+import GradeRoundedIcon from "@mui/icons-material/GradeRounded";
+import TokenRoundedIcon from "@mui/icons-material/TokenRounded";
 
 type NavItem = {
   label: string;
@@ -53,6 +57,11 @@ type NotificationItem = {
   href: string;
   createdAt: string;
   readAt: string | null;
+};
+
+type KidSummary = {
+  weeklyPoints: number;
+  totalStarsEarned: number;
 };
 
 export default function BrandShell({
@@ -73,14 +82,16 @@ export default function BrandShell({
   const [notifErr, setNotifErr] = React.useState<string | null>(null);
   const [notifItems, setNotifItems] = React.useState<NotificationItem[]>([]);
   const [notifUnreadCount, setNotifUnreadCount] = React.useState(0);
+  const [kidSummary, setKidSummary] = React.useState<KidSummary | null>(null);
 
   const nav: NavItem[] = [
     { label: isKidView ? "Today's chores" : "My chores", href: "/app/my-chores", icon: <ChecklistRoundedIcon /> },
     { label: isKidView ? "Stars & rewards" : "Awards", href: "/app/awards", icon: <EmojiEventsRoundedIcon /> },
-    { label: isKidView ? "Scoreboard" : "Leaderboard", href: "/app/leaderboard", icon: <LeaderboardRoundedIcon /> },
-    { label: "Admin", href: "/app/admin/chores", icon: <AdminPanelSettingsRoundedIcon />, show: role === "ADULT" },
+    { label: isKidView ? "Scoreboard" : "Leaderboard", href: "/app/leaderboard", icon: <LeaderboardRoundedIcon />, show: !isKidView },
+    { label: "Chores", href: "/app/admin/chores", icon: <AssignmentRoundedIcon />, show: role === "ADULT" },
     { label: "Approvals", href: "/app/admin/approvals", icon: <FactCheckRoundedIcon />, show: role === "ADULT" },
     { label: "Star exchanges", href: "/app/admin/stars", icon: <AutoAwesomeRoundedIcon />, show: role === "ADULT" },
+    { label: "Family stats", href: "/app/admin/stats", icon: <QueryStatsRoundedIcon />, show: role === "ADULT" },
     { label: "Family", href: "/app/admin/family", icon: <GroupRoundedIcon />, show: role === "ADULT" },
   ].filter((x) => x.show !== false);
 
@@ -118,6 +129,32 @@ export default function BrandShell({
     }, 60_000);
     return () => window.clearInterval(timer);
   }, [loadNotifications]);
+
+  const loadKidSummary = React.useCallback(async () => {
+    if (!isKidView) return;
+    try {
+      const res = await fetch("/api/kid-summary", { cache: "no-store" });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) return;
+      const weeklyPoints = typeof j?.weeklyPoints === "number" ? j.weeklyPoints : 0;
+      const totalStarsEarned = typeof j?.totalStarsEarned === "number" ? j.totalStarsEarned : 0;
+      setKidSummary({ weeklyPoints, totalStarsEarned });
+    } catch {
+      // Keep nav resilient even if summary lookup fails.
+    }
+  }, [isKidView]);
+
+  React.useEffect(() => {
+    if (!isKidView) {
+      setKidSummary(null);
+      return;
+    }
+    void loadKidSummary();
+    const timer = window.setInterval(() => {
+      void loadKidSummary();
+    }, 60_000);
+    return () => window.clearInterval(timer);
+  }, [isKidView, loadKidSummary]);
 
   function notificationColor(severity: NotificationItem["severity"]) {
     if (severity === "SUCCESS") return "success" as const;
@@ -275,17 +312,41 @@ export default function BrandShell({
             </Box>
           </Stack>
 
-          <IconButton aria-label="notifications" onClick={openNotifications}>
-            <Badge
-              badgeContent={notifUnreadCount}
-              color="error"
-              overlap="circular"
-              max={99}
-              invisible={notifUnreadCount === 0}
-            >
-              <NotificationsRoundedIcon />
-            </Badge>
-          </IconButton>
+          <Stack direction="row" spacing={0.75} alignItems="center">
+            {isKidView && (
+              <>
+                <Tooltip title="Coins this week">
+                  <Chip
+                    size="small"
+                    color="primary"
+                    variant="outlined"
+                    icon={<TokenRoundedIcon />}
+                    label={String(kidSummary?.weeklyPoints ?? 0)}
+                  />
+                </Tooltip>
+                <Tooltip title="Total stars earned">
+                  <Chip
+                    size="small"
+                    color="warning"
+                    variant="outlined"
+                    icon={<GradeRoundedIcon />}
+                    label={String(kidSummary?.totalStarsEarned ?? 0)}
+                  />
+                </Tooltip>
+              </>
+            )}
+            <IconButton aria-label="notifications" onClick={openNotifications}>
+              <Badge
+                badgeContent={notifUnreadCount}
+                color="error"
+                overlap="circular"
+                max={99}
+                invisible={notifUnreadCount === 0}
+              >
+                <NotificationsRoundedIcon />
+              </Badge>
+            </IconButton>
+          </Stack>
         </Toolbar>
       </AppBar>
 

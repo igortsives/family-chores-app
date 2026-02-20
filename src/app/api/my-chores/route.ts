@@ -4,6 +4,17 @@ import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { Prisma } from "@prisma/client";
 
+function toLocalDateStart(raw: string): Date | null {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(raw)) return null;
+  const [year, month, day] = raw.split("-").map((v) => Number(v));
+  if (!Number.isInteger(year) || !Number.isInteger(month) || !Number.isInteger(day)) return null;
+
+  const parsed = new Date(year, month - 1, day);
+  parsed.setHours(0, 0, 0, 0);
+  if (parsed.getFullYear() !== year || parsed.getMonth() !== month - 1 || parsed.getDate() !== day) return null;
+  return parsed;
+}
+
 function isMissingRejectionReasonColumn(error: unknown) {
   if (!(error instanceof Prisma.PrismaClientKnownRequestError)) return false;
   if (error.code !== "P2022") return false;
@@ -11,7 +22,7 @@ function isMissingRejectionReasonColumn(error: unknown) {
   return message.includes("rejectionReason");
 }
 
-export async function GET() {
+export async function GET(req?: Request) {
   const session = await getServerSession(authOptions);
   const email = session?.user?.email;
   if (!email) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -22,13 +33,34 @@ export async function GET() {
   });
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
+  const dateParam = req ? new URL(req.url).searchParams.get("date") : null;
+  const selectedDayStart =
+    typeof dateParam === "string" && dateParam.length > 0 ? toLocalDateStart(dateParam) : null;
+  if (dateParam && !selectedDayStart) {
+    return NextResponse.json({ error: "Invalid date. Use YYYY-MM-DD." }, { status: 400 });
+  }
+
+  const targetDayStart = selectedDayStart ?? (() => {
+    const now = new Date();
+    now.setHours(0, 0, 0, 0);
+    return now;
+  })();
+  const targetDayEnd = new Date(targetDayStart);
+  targetDayEnd.setHours(23, 59, 59, 999);
+  const targetDayOfWeek = targetDayStart.getDay();
+
   // Return chores assigned to this user.
-  // We keep it simple: "assigned chores" + whether there's a pending completion today.
+  // Include chores due on the selected date (daily, matching weekly, or legacy unscheduled).
   const chores = await prisma.chore.findMany({
     where: {
       familyId: user.familyId,
       active: true,
       assignments: { some: { userId: user.id } },
+      OR: [
+        { schedules: { some: { frequency: "DAILY" } } },
+        { schedules: { some: { frequency: "WEEKLY", dayOfWeek: targetDayOfWeek } } },
+        { schedules: { none: {} } },
+      ],
     },
     select: {
       id: true,
@@ -40,18 +72,11 @@ export async function GET() {
     orderBy: { title: "asc" },
   });
 
-  // Build a “today” window
-  const now = new Date();
-  const start = new Date(now);
-  start.setHours(0, 0, 0, 0);
-  const end = new Date(now);
-  end.setHours(23, 59, 59, 999);
-
-  // Find today's instances for those chores; if none exist yet, we’ll create “virtual instances” client-side.
+  // Find selected day's instances.
   const where = {
     familyId: user.familyId,
     choreId: { in: chores.map((c) => c.id) },
-    dueDate: { gte: start, lte: end },
+    dueDate: { gte: targetDayStart, lte: targetDayEnd },
   } as const;
 
   let hasRejectionReason = true;
@@ -108,6 +133,7 @@ export async function GET() {
 
   return NextResponse.json({
     me: user,
+    date: targetDayStart.toISOString(),
     chores: chores.map((c) => {
       const inst = byChore[c.id] ?? null;
       const completion = inst?.completions?.[0] ?? null;

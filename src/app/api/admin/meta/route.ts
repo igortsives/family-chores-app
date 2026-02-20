@@ -16,7 +16,7 @@ export async function GET() {
 
   const kids = await prisma.user.findMany({
     where: { familyId: me.familyId, role: "KID", isActive: true, isHidden: false },
-    select: { id: true, name: true, email: true },
+    select: { id: true, name: true, email: true, avatarUrl: true },
     orderBy: [{ name: "asc" }, { email: "asc" }],
   });
 
