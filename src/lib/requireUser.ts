@@ -9,7 +9,7 @@ export async function requireSessionUser() {
 
   const me = await prisma.user.findUnique({
     where: { id: uid },
-    select: { id: true, role: true, familyId: true, username: true, name: true },
+    select: { id: true, role: true, familyId: true, username: true, name: true, avatarUrl: true },
   });
 
   if (!me) return { status: 401 as const, error: "Unauthorized" as const };

@@ -33,6 +33,7 @@ export async function GET() {
   return NextResponse.json({
     weeklyPoints: weeklyPointsAgg._sum.pointsEarned ?? 0,
     totalStarsEarned: starsAgg._sum.earned ?? 0,
+    avatarUrl: me.avatarUrl ?? null,
     weekStart: weekStart.toISOString(),
   });
 }
