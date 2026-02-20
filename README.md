@@ -1,9 +1,9 @@
 # Family Chores App ⭐
 
-A family-focused chore management app that helps parents assign, track, and approve chores while motivating kids with a **weekly star reward system**.
+A family-focused chore management app that helps parents assign, track, and approve chores while motivating kids with coins, scores, and stars.
 
 Parents configure chores and schedules.  
-Kids complete chores, earn ⭐ **Stars**, and exchange them for real-world rewards.
+Kids complete chores, earn coins, build star progress, and exchange earned stars for real-world rewards.
 
 ---
 
@@ -17,23 +17,30 @@ Kids complete chores, earn ⭐ **Stars**, and exchange them for real-world rewar
 - Schedule chores weekly
 - Approve or reject completed chores
 - Manage family members (add / update / deactivate / hide)
+- Upload optional member profile pictures
 - Approve star exchanges
+- View family-wide stats (scores, coins, stars, completion/consistency)
 
 **Kids**
-- View assigned chores
+- View assigned chores by day
 - Mark chores as completed
 - Undo a completion while it is still pending parent approval
-- Track weekly progress
-- Earn ⭐ Stars for completing all assigned chores in a week
+- See rejection reasons from parents
+- Track leaderboard status and weekly progress
+- Earn coins from approved chores
+- Build progress toward ⭐ Stars over time
 - Request star exchanges for real rewards
 
 ---
 
-### ⭐ Weekly Star Awards
+### ⭐ Scoring, Coins, and Stars
 
-- Each week, a kid earns **1 Star** if:
-  - All assigned chores for the week are completed
-  - All completions are approved by a parent
+- Leaderboard ranking uses a normalized hybrid weekly score:
+  - 70% completion rate
+  - 20% consistency
+  - 10% streak factor
+- Coins are awarded from approved chores and are shown for motivation/reward tracking.
+- Stars are derived from cumulative weekly score progress with carryover across weeks.
 - Stars are:
   - Tracked by week
   - Added to a running balance
@@ -43,10 +50,12 @@ Kids complete chores, earn ⭐ **Stars**, and exchange them for real-world rewar
 
 ### 📊 Dashboards
 
-- My Chores (Kids)
+- Today's Chores (Kids, with weekly day strip)
+- Kids leaderboard modal (from Today's Chores)
 - Parent Approvals (Parents)
-- Admin Chores Management (Parents)
-- Family Members Management
+- Chores Management (Parents)
+- Family Management (Parents)
+- Family Stats (Parents)
 - Awards / Stars History
 - Leaderboard (hidden members are excluded)
 
@@ -164,6 +173,7 @@ scripts/              # Install / update scripts
 - Prisma client is generated locally
 - Logout is handled client-side to avoid redirect issues
 - Weekly star logic is Monday-based
+- Star progress carries over across weeks
 - Run unit tests with `npm run test:run`
 - Run E2E UI tests with `npm run test:e2e`
 - CI runs lint, unit tests, and Playwright E2E tests (with PostgreSQL + Prisma migrate/seed)

@@ -111,9 +111,13 @@ npx prisma generate
 
 When modifying the rewards system:
 
-- Stars are earned **weekly**
-- A star is earned only if **all assigned chores are completed and approved**
+- Leaderboard rank uses normalized weekly score:
+  - completion (70%)
+  - consistency (20%)
+  - streak factor (10%)
+- Stars are derived from cumulative weekly score progress (with carryover across weeks)
 - Stars are tracked by week
+- Coins are earned from approved chores but do not determine leaderboard rank
 - Parents approve star exchanges
 - Stars are deducted only on approved exchanges
 
@@ -156,4 +160,3 @@ Open a Pull Request against `main` with:
 ---
 
 Thanks for helping make Family Chores better ❤️
-

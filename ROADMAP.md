@@ -1,6 +1,6 @@
 # Family Chores Roadmap
 
-Last updated: 2026-02-19
+Last updated: 2026-02-20
 
 This roadmap captures planned product and engineering enhancements so the team can prioritize work consistently over time.
 
@@ -38,10 +38,35 @@ This roadmap captures planned product and engineering enhancements so the team c
    - `npm run lint` passed.
    - `npm run test:run` passed.
    - `npm run build` passed.
-   - Authenticated end-to-end smoke test passed (`E2E_FEATURE_TEST_OK`), including:
+  - Authenticated end-to-end smoke test passed (`E2E_FEATURE_TEST_OK`), including:
      - reject with reason,
      - kid sees reason,
      - notification unread -> read -> dismissed lifecycle.
+
+## Completed (2026-02-20)
+
+1. Avatar-enabled family members
+   - Added optional member avatar storage and migration.
+   - Added avatar upload/edit support in Family management.
+   - Reused member avatars in chore assignment displays and selectors.
+2. Fair leaderboard scoring model
+   - Replaced rank-by-coins behavior with normalized hybrid score ranking.
+   - Added weighted formula: completion (70%), consistency (20%), streak (10%).
+   - Kept coins visible for motivation while removing coin bias from rank.
+3. Star progress carryover model
+   - Added cumulative weekly-score carryover toward stars.
+   - Added progress previews for next star (kid + parent views).
+   - Added star-earned notification support on newly awarded stars.
+4. Parent stats consolidation
+   - Added Family Stats page/API combining scores, coins, stars, completion, consistency, and rank.
+5. Parent admin UX consolidation
+   - Renamed Parent admin to Chores.
+   - Modernized Chores and Family pages with compact, responsive, Material-style controls.
+   - Added icon-triggered filter/search headers and row-tap manage flows.
+6. Kid chores UX improvements
+   - Added weekly day strip with future-day lockout.
+   - Added in-page leaderboard summary with modal details.
+   - Added kid nav counters for weekly coins and total stars earned.
 
 ## Phase 2: Improve Planning and Accountability (2-4 Sprints)
 
@@ -51,7 +76,7 @@ This roadmap captures planned product and engineering enhancements so the team c
 2. `P1` Reminder delivery beyond in-app polling
    - Scheduled reminders (email/push-ready architecture).
    - Parent nudges for pending approvals; kid nudges for incomplete chores.
-3. `P2` Parent analytics dashboard
+3. `P2` Parent analytics dashboard [DONE 2026-02-20]
    - Completion rates, rejection trends, overdue metrics, weekly comparisons.
 4. `P2` Reward governance controls
    - Reward catalog rules, weekly caps, cooldowns, request expiration.
