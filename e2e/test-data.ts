@@ -41,6 +41,10 @@ export async function resetE2ETestState() {
     const instanceIds = instances.map((x) => x.id);
 
     await prisma.userAward.deleteMany({ where: { userId: { in: userIds } } });
+    await prisma.user.updateMany({
+      where: { id: { in: userIds } },
+      data: { avatarUrl: null },
+    });
     await prisma.choreCompletion.deleteMany({
       where: {
         OR: [
