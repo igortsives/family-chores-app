@@ -120,7 +120,7 @@ test.describe("Kid and parent E2E flows", () => {
     await page.goto("/app/admin/family");
     await expect(page.getByRole("heading", { name: "Family" })).toBeVisible();
 
-    const kidRow = page.getByRole("row").filter({ hasText: E2E_KID_NAME }).first();
+    const kidRow = page.locator("[data-testid^='family-member-']").filter({ hasText: E2E_KID_NAME }).first();
     await expect(kidRow).toBeVisible();
     await kidRow.click();
 
@@ -131,7 +131,7 @@ test.describe("Kid and parent E2E flows", () => {
     await page.getByRole("button", { name: "Save" }).click();
     await expect(page.getByRole("dialog", { name: "Manage member" })).toHaveCount(0);
 
-    const refreshedKidRow = page.getByRole("row").filter({ hasText: E2E_KID_NAME }).first();
+    const refreshedKidRow = page.locator("[data-testid^='family-member-']").filter({ hasText: E2E_KID_NAME }).first();
     await expect(refreshedKidRow.locator("img")).toHaveCount(1);
 
     await page.goto("/app/admin/chores");

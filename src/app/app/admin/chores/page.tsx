@@ -422,15 +422,23 @@ export default function AdminChoresPage() {
                 ))}
               </Stack>
 
-              <Button
-                size="small"
-                variant="contained"
-                aria-label="Add chore"
-                onClick={openCreate}
-                sx={{ minWidth: 34, px: 0.75, flexShrink: 0 }}
-              >
-                <AddRoundedIcon fontSize="small" />
-              </Button>
+              <Tooltip title="Add chore" disableHoverListener={!isMobile}>
+                <Button
+                  size="small"
+                  variant="contained"
+                  aria-label="Add chore"
+                  onClick={openCreate}
+                  startIcon={isMobile ? undefined : <AddRoundedIcon fontSize="small" />}
+                  sx={{
+                    minWidth: isMobile ? 34 : "auto",
+                    px: isMobile ? 0.75 : 1.2,
+                    flexShrink: 0,
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {isMobile ? <AddRoundedIcon fontSize="small" /> : "Add chore"}
+                </Button>
+              </Tooltip>
             </Stack>
 
             <Popover
@@ -533,43 +541,43 @@ export default function AdminChoresPage() {
                     borderTop: idx === 0 ? "none" : "1px solid",
                     borderColor: "divider",
                     transition: "background-color 140ms ease",
-                    "&:hover": { bgcolor: "action.hover" },
+                    bgcolor: c.active ? undefined : "rgba(120, 120, 120, 0.05)",
+                    opacity: c.active ? 1 : 0.82,
+                    "&:hover": { bgcolor: c.active ? "action.hover" : "rgba(120, 120, 120, 0.1)", opacity: 1 },
                     "&:hover .chore-description-text": { color: "text.primary" },
                   }}
                 >
                   <Stack spacing={0}>
-                    <Stack direction="row" spacing={1} alignItems="flex-start" justifyContent="space-between" sx={{ minWidth: 0 }}>
-                      <Stack direction="row" spacing={0.5} alignItems="center" sx={{ flex: 1, minWidth: 0 }}>
-                        <Typography
-                          fontWeight={600}
-                          variant="body2"
-                          title={c.title}
-                          sx={{ minWidth: 0, whiteSpace: "normal", wordBreak: "break-word" }}
-                        >
-                          {c.title}
-                        </Typography>
-                        <Chip
-                          size="small"
-                          variant="outlined"
-                          label={c.active ? "Active" : "Inactive"}
-                          sx={{
-                            height: 18,
-                            flexShrink: 0,
-                            "& .MuiChip-label": { px: 0.6, fontSize: "0.66rem" },
-                            ...(c.active
-                              ? {
-                                color: "info.dark",
-                                borderColor: "rgba(25, 118, 210, 0.38)",
-                                bgcolor: "rgba(25, 118, 210, 0.10)",
-                              }
-                              : {
-                                color: "text.secondary",
-                                borderColor: "rgba(120, 120, 120, 0.35)",
-                                bgcolor: "rgba(120, 120, 120, 0.10)",
-                              }),
-                          }}
-                        />
-                      </Stack>
+                    <Stack direction="row" alignItems="flex-start" justifyContent="space-between" sx={{ minWidth: 0, gap: 0.75 }}>
+                      <Typography
+                        fontWeight={600}
+                        variant="body2"
+                        title={c.title}
+                        sx={{ minWidth: 0, flex: 1, whiteSpace: "normal", wordBreak: "break-word" }}
+                      >
+                        {c.title}
+                      </Typography>
+                      <Chip
+                        size="small"
+                        variant="outlined"
+                        label={c.active ? "Active" : "Inactive"}
+                        sx={{
+                          height: 18,
+                          flexShrink: 0,
+                          "& .MuiChip-label": { px: 0.6, fontSize: "0.66rem" },
+                          ...(c.active
+                            ? {
+                              color: "info.dark",
+                              borderColor: "rgba(25, 118, 210, 0.38)",
+                              bgcolor: "rgba(25, 118, 210, 0.10)",
+                            }
+                            : {
+                              color: "text.secondary",
+                              borderColor: "rgba(120, 120, 120, 0.35)",
+                              bgcolor: "rgba(120, 120, 120, 0.10)",
+                            }),
+                        }}
+                      />
                     </Stack>
                     {c.description && (
                       <Typography
