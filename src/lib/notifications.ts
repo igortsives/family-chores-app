@@ -1,6 +1,8 @@
 import { NotificationKind, NotificationSeverity, Role } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 
+const REMINDER_SYNC_MAX_AGE_MS = 5 * 60 * 1000;
+
 type ReminderPayload = {
   severity: NotificationSeverity;
   title: string;
@@ -296,6 +298,54 @@ export async function syncUserReminderNotifications(params: {
     return;
   }
   await syncKidReminders(params.userId, params.familyId);
+}
+
+export async function syncUserReminderNotificationsIfStale(params: {
+  userId: string;
+  familyId: string;
+  role: Role;
+  now?: Date;
+}) {
+  const now = params.now ?? new Date();
+  const latestReminder = await prisma.notification.findFirst({
+    where: { userId: params.userId, kind: "REMINDER" },
+    orderBy: { updatedAt: "desc" },
+    select: { updatedAt: true },
+  });
+
+  const todayStart = startOfToday();
+  const reminderUpdatedAt = latestReminder?.updatedAt ?? null;
+  const shouldSync =
+    !reminderUpdatedAt
+    || reminderUpdatedAt < todayStart
+    || (now.getTime() - reminderUpdatedAt.getTime()) >= REMINDER_SYNC_MAX_AGE_MS;
+
+  if (!shouldSync) return;
+  await syncUserReminderNotifications(params);
+}
+
+export async function syncKidReminderNotifications(userId: string, familyId: string) {
+  await syncKidReminders(userId, familyId);
+}
+
+export async function syncAdultReminderNotifications(userId: string, familyId: string) {
+  await syncAdultReminders(userId, familyId);
+}
+
+export async function syncAdultReminderNotificationsForFamily(familyId: string) {
+  const adults = await prisma.user.findMany({
+    where: { familyId, role: "ADULT", isActive: true, isHidden: false },
+    select: { id: true },
+  });
+  await Promise.all(adults.map((adult) => syncAdultReminders(adult.id, familyId)));
+}
+
+export async function syncKidReminderNotificationsForFamily(familyId: string) {
+  const kids = await prisma.user.findMany({
+    where: { familyId, role: "KID", isActive: true, isHidden: false },
+    select: { id: true },
+  });
+  await Promise.all(kids.map((kid) => syncKidReminders(kid.id, familyId)));
 }
 
 export async function getUserNotifications(userId: string) {

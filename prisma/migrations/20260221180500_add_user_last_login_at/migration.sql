@@ -1,0 +1,2 @@
+-- Track last successful sign-in timestamp per user.
+ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "lastLoginAt" TIMESTAMP(3);

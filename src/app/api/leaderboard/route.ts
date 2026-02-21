@@ -1,20 +1,13 @@
 import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { HYBRID_WEIGHTS, computeHybridScore, computeStreak, dayKey } from "@/lib/leaderboard";
 import { addDays, startOfWeekMonday } from "@/lib/week";
+import { requireSessionUser } from "@/lib/requireUser";
 
 export async function GET() {
-  const session = await getServerSession(authOptions);
-  const email = session?.user?.email;
-  if (!email) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-
-  const me = await prisma.user.findUnique({
-    where: { email },
-    select: { id: true, familyId: true },
-  });
-  if (!me) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const auth = await requireSessionUser({ source: "api/leaderboard.GET" });
+  if ("status" in auth) return NextResponse.json({ error: auth.error }, { status: auth.status });
+  const { me } = auth;
 
   // Get kids (leaderboard focuses on kids; change if you want adults too)
   const kids = await prisma.user.findMany({

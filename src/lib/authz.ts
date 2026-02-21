@@ -1,14 +1,17 @@
-import { getServerSession } from "next-auth";
+import { requireAdult as requireAdultGuard, requireSessionUser } from "@/lib/requireUser";
 
 export async function requireSession() {
-  const session = await getServerSession();
-  if (!session?.user) throw new Error("UNAUTHORIZED");
-  return session;
+  const auth = await requireSessionUser({ source: "lib/authz.requireSession", logOutcome: false });
+  if ("status" in auth) throw new Error("UNAUTHORIZED");
+  return { user: auth.me } as any;
 }
 
 export async function requireAdult() {
-  const session = await requireSession();
-  const role = (session.user as any).role as "ADULT" | "KID";
-  if (role !== "ADULT") throw new Error("FORBIDDEN");
-  return session;
+  const auth = await requireAdultGuard({ source: "lib/authz.requireAdult" });
+  if ("status" in auth) {
+    if (auth.status === 401) throw new Error("UNAUTHORIZED");
+    if (auth.status === 403) throw new Error("FORBIDDEN");
+    throw new Error("UNAUTHORIZED");
+  }
+  return { user: auth.me } as any;
 }

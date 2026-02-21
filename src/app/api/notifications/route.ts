@@ -6,15 +6,15 @@ import {
   markAllNotificationsRead,
   markNotificationRead,
   markNotificationUnread,
-  syncUserReminderNotifications,
+  syncUserReminderNotificationsIfStale,
 } from "@/lib/notifications";
 
 export async function GET() {
-  const auth = await requireSessionUser();
+  const auth = await requireSessionUser({ source: "api/notifications.GET" });
   if ("status" in auth) return NextResponse.json({ error: auth.error }, { status: auth.status });
   const { me } = auth;
 
-  await syncUserReminderNotifications({
+  await syncUserReminderNotificationsIfStale({
     userId: me.id,
     familyId: me.familyId,
     role: me.role,
@@ -30,7 +30,7 @@ export async function GET() {
 }
 
 export async function PATCH(req: Request) {
-  const auth = await requireSessionUser();
+  const auth = await requireSessionUser({ source: "api/notifications.PATCH" });
   if ("status" in auth) return NextResponse.json({ error: auth.error }, { status: auth.status });
   const { me } = auth;
 
@@ -59,7 +59,7 @@ export async function PATCH(req: Request) {
 }
 
 export async function DELETE(req: Request) {
-  const auth = await requireSessionUser();
+  const auth = await requireSessionUser({ source: "api/notifications.DELETE" });
   if ("status" in auth) return NextResponse.json({ error: auth.error }, { status: auth.status });
   const { me } = auth;
 

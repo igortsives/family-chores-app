@@ -1,10 +1,14 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireAdult } from "@/lib/requireUser";
-import { createNotification } from "@/lib/notifications";
+import {
+  createNotification,
+  syncAdultReminderNotificationsForFamily,
+  syncKidReminderNotifications,
+} from "@/lib/notifications";
 
 export async function GET() {
-  const auth = await requireAdult();
+  const auth = await requireAdult({ source: "api/admin/stars/exchanges.GET" });
   if ("status" in auth) return NextResponse.json({ error: auth.error }, { status: auth.status });
   const { me } = auth;
 
@@ -28,7 +32,7 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
-  const auth = await requireAdult();
+  const auth = await requireAdult({ source: "api/admin/stars/exchanges.POST" });
   if ("status" in auth) return NextResponse.json({ error: auth.error }, { status: auth.status });
   const { me } = auth;
 
@@ -69,6 +73,11 @@ export async function POST(req: Request) {
         : "Your star request was not approved yet.",
     href: "/app/awards",
   });
+
+  await Promise.all([
+    syncKidReminderNotifications(ex.userId, me.familyId),
+    syncAdultReminderNotificationsForFamily(me.familyId),
+  ]);
 
   return NextResponse.json({ ok: true });
 }

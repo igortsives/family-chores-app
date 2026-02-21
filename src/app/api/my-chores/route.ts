@@ -1,8 +1,7 @@
 import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { Prisma } from "@prisma/client";
+import { requireSessionUser } from "@/lib/requireUser";
 
 function toLocalDateStart(raw: string): Date | null {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(raw)) return null;
@@ -23,15 +22,12 @@ function isMissingRejectionReasonColumn(error: unknown) {
 }
 
 export async function GET(req?: Request) {
-  const session = await getServerSession(authOptions);
-  const email = session?.user?.email;
-  if (!email) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-
-  const user = await prisma.user.findUnique({
-    where: { email },
-    select: { id: true, familyId: true, role: true, name: true, email: true },
-  });
-  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const auth = await requireSessionUser({ source: "api/my-chores.GET" });
+  if ("status" in auth) return NextResponse.json({ error: auth.error }, { status: auth.status });
+  const { me: user } = auth;
+  if (user.role !== "KID") {
+    return NextResponse.json({ error: "Only kids can view chores" }, { status: 403 });
+  }
 
   const dateParam = req ? new URL(req.url).searchParams.get("date") : null;
   const selectedDayStart =

@@ -1,9 +1,7 @@
 import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import bcrypt from "bcryptjs";
-
+import { requireAdult } from "@/lib/requireUser";
 function normalizeAvatarUrl(value: unknown): string | null | undefined {
   if (value === undefined) return undefined;
   if (value === null) return null;
@@ -13,24 +11,8 @@ function normalizeAvatarUrl(value: unknown): string | null | undefined {
   return v;
 }
 
-async function requireAdult() {
-  const session = await getServerSession(authOptions);
-  const uid = (session?.user as any)?.id as string | undefined;
-  if (!uid) return { status: 401 as const, error: "Unauthorized" as const };
-
-  const me = await prisma.user.findUnique({
-    where: { id: uid },
-    select: { id: true, familyId: true, role: true },
-  });
-
-  if (!me) return { status: 401 as const, error: "Unauthorized" as const };
-  if (me.role !== "ADULT") return { status: 403 as const, error: "Forbidden" as const };
-
-  return { me };
-}
-
 export async function GET() {
-  const auth = await requireAdult();
+  const auth = await requireAdult({ source: "api/admin/family-members.GET" });
   if ("status" in auth) return NextResponse.json({ error: auth.error }, { status: auth.status });
   const { me } = auth;
 
@@ -47,6 +29,7 @@ export async function GET() {
       isActive: true,
       isHidden: true,
       createdAt: true,
+      lastLoginAt: true,
     } as any,
     orderBy: [{ role: "asc" }, { name: "asc" }, { username: "asc" }],
   });
@@ -55,7 +38,7 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
-  const auth = await requireAdult();
+  const auth = await requireAdult({ source: "api/admin/family-members.POST" });
   if ("status" in auth) return NextResponse.json({ error: auth.error }, { status: auth.status });
   const { me } = auth;
 
@@ -103,7 +86,7 @@ export async function POST(req: Request) {
 }
 
 export async function PUT(req: Request) {
-  const auth = await requireAdult();
+  const auth = await requireAdult({ source: "api/admin/family-members.PUT" });
   if ("status" in auth) return NextResponse.json({ error: auth.error }, { status: auth.status });
   const { me } = auth;
 

@@ -1,28 +1,27 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("next-auth", () => ({
-  getServerSession: vi.fn(),
-}));
-
-vi.mock("@/lib/auth", () => ({
-  authOptions: {},
+vi.mock("@/lib/requireUser", () => ({
+  requireSessionUser: vi.fn(),
 }));
 
 vi.mock("@/lib/prisma", () => ({
   prisma: {
-    user: { findUnique: vi.fn() },
     chore: { findFirst: vi.fn() },
     choreInstance: { findFirst: vi.fn(), create: vi.fn() },
     choreCompletion: { findFirst: vi.fn(), create: vi.fn() },
   },
 }));
 
-import { getServerSession } from "next-auth";
+vi.mock("@/lib/notifications", () => ({
+  syncAdultReminderNotificationsForFamily: vi.fn(),
+  syncKidReminderNotifications: vi.fn(),
+}));
+
+import { requireSessionUser } from "@/lib/requireUser";
 import { prisma } from "@/lib/prisma";
 import { POST } from "@/app/api/chores/complete/route";
 
-const getServerSessionMock = vi.mocked(getServerSession);
-const findUserMock = vi.mocked(prisma.user.findUnique as any);
+const requireSessionUserMock = vi.mocked(requireSessionUser);
 const findChoreMock = vi.mocked(prisma.chore.findFirst as any);
 const findInstanceMock = vi.mocked(prisma.choreInstance.findFirst as any);
 const createInstanceMock = vi.mocked(prisma.choreInstance.create as any);
@@ -34,8 +33,8 @@ describe("POST /api/chores/complete", () => {
     vi.clearAllMocks();
   });
 
-  it("returns 401 when no authenticated email is present", async () => {
-    getServerSessionMock.mockResolvedValue({ user: {} } as any);
+  it("returns 401 when auth guard rejects", async () => {
+    requireSessionUserMock.mockResolvedValue({ status: 401, error: "Unauthorized" } as any);
 
     const req = new Request("http://localhost:3000/api/chores/complete", {
       method: "POST",
@@ -49,8 +48,7 @@ describe("POST /api/chores/complete", () => {
   });
 
   it("returns existing non-rejected completion instead of creating another", async () => {
-    getServerSessionMock.mockResolvedValue({ user: { email: "kid@example.com" } } as any);
-    findUserMock.mockResolvedValue({ id: "u1", familyId: "f1", role: "KID" });
+    requireSessionUserMock.mockResolvedValue({ me: { id: "u1", familyId: "f1", role: "KID" } } as any);
     findChoreMock.mockResolvedValue({ id: "c1", points: 3, familyId: "f1" });
     findInstanceMock.mockResolvedValueOnce({ id: "i1" });
     findCompletionMock.mockResolvedValue({ id: "cmp-1", status: "PENDING" });
@@ -69,8 +67,7 @@ describe("POST /api/chores/complete", () => {
   });
 
   it("creates a new pending completion when latest completion was rejected", async () => {
-    getServerSessionMock.mockResolvedValue({ user: { email: "kid@example.com" } } as any);
-    findUserMock.mockResolvedValue({ id: "u1", familyId: "f1", role: "KID" });
+    requireSessionUserMock.mockResolvedValue({ me: { id: "u1", familyId: "f1", role: "KID" } } as any);
     findChoreMock.mockResolvedValue({ id: "c1", points: 3, familyId: "f1" });
     findInstanceMock.mockResolvedValueOnce(null);
     createInstanceMock.mockResolvedValue({ id: "i1" });
@@ -98,14 +95,8 @@ describe("POST /api/chores/complete", () => {
     );
   });
 
-  it("auto-approves completion for adult users", async () => {
-    getServerSessionMock.mockResolvedValue({ user: { email: "adult@example.com" } } as any);
-    findUserMock.mockResolvedValue({ id: "u2", familyId: "f1", role: "ADULT" });
-    findChoreMock.mockResolvedValue({ id: "c1", points: 2, familyId: "f1" });
-    findInstanceMock.mockResolvedValueOnce(null);
-    createInstanceMock.mockResolvedValue({ id: "i1" });
-    findCompletionMock.mockResolvedValue(null);
-    createCompletionMock.mockResolvedValue({ id: "cmp-adult", status: "APPROVED" });
+  it("returns 403 for adult users", async () => {
+    requireSessionUserMock.mockResolvedValue({ me: { id: "u2", familyId: "f1", role: "ADULT" } } as any);
 
     const req = new Request("http://localhost:3000/api/chores/complete", {
       method: "POST",
@@ -115,16 +106,9 @@ describe("POST /api/chores/complete", () => {
 
     const res = await POST(req);
 
-    expect(res.status).toBe(200);
-    await expect(res.json()).resolves.toEqual({ ok: true, completionId: "cmp-adult", status: "APPROVED" });
-    expect(createCompletionMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        data: expect.objectContaining({
-          userId: "u2",
-          status: "APPROVED",
-          approvedById: "u2",
-        }),
-      }),
-    );
+    expect(res.status).toBe(403);
+    await expect(res.json()).resolves.toEqual({ error: "Only kids can complete chores" });
+    expect(findChoreMock).not.toHaveBeenCalled();
+    expect(createCompletionMock).not.toHaveBeenCalled();
   });
 });

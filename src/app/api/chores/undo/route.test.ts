@@ -1,26 +1,25 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("next-auth", () => ({
-  getServerSession: vi.fn(),
-}));
-
-vi.mock("@/lib/auth", () => ({
-  authOptions: {},
+vi.mock("@/lib/requireUser", () => ({
+  requireSessionUser: vi.fn(),
 }));
 
 vi.mock("@/lib/prisma", () => ({
   prisma: {
-    user: { findUnique: vi.fn() },
     choreCompletion: { deleteMany: vi.fn(), findFirst: vi.fn() },
   },
 }));
 
-import { getServerSession } from "next-auth";
+vi.mock("@/lib/notifications", () => ({
+  syncAdultReminderNotificationsForFamily: vi.fn(),
+  syncKidReminderNotifications: vi.fn(),
+}));
+
+import { requireSessionUser } from "@/lib/requireUser";
 import { prisma } from "@/lib/prisma";
 import { POST } from "@/app/api/chores/undo/route";
 
-const getServerSessionMock = vi.mocked(getServerSession);
-const findUserMock = vi.mocked(prisma.user.findUnique as any);
+const requireSessionUserMock = vi.mocked(requireSessionUser);
 const deleteManyMock = vi.mocked(prisma.choreCompletion.deleteMany as any);
 const findCompletionMock = vi.mocked(prisma.choreCompletion.findFirst as any);
 
@@ -30,8 +29,7 @@ describe("POST /api/chores/undo", () => {
   });
 
   it("returns 403 for non-kid users", async () => {
-    getServerSessionMock.mockResolvedValue({ user: { email: "adult@example.com" } } as any);
-    findUserMock.mockResolvedValue({ id: "u1", familyId: "f1", role: "ADULT" });
+    requireSessionUserMock.mockResolvedValue({ me: { id: "u1", familyId: "f1", role: "ADULT" } } as any);
 
     const req = new Request("http://localhost:3000/api/chores/undo", {
       method: "POST",
@@ -46,8 +44,7 @@ describe("POST /api/chores/undo", () => {
   });
 
   it("returns 400 when completionId is missing", async () => {
-    getServerSessionMock.mockResolvedValue({ user: { email: "kid@example.com" } } as any);
-    findUserMock.mockResolvedValue({ id: "u1", familyId: "f1", role: "KID" });
+    requireSessionUserMock.mockResolvedValue({ me: { id: "u1", familyId: "f1", role: "KID" } } as any);
 
     const req = new Request("http://localhost:3000/api/chores/undo", {
       method: "POST",
@@ -62,8 +59,7 @@ describe("POST /api/chores/undo", () => {
   });
 
   it("returns success when pending completion is deleted", async () => {
-    getServerSessionMock.mockResolvedValue({ user: { email: "kid@example.com" } } as any);
-    findUserMock.mockResolvedValue({ id: "u1", familyId: "f1", role: "KID" });
+    requireSessionUserMock.mockResolvedValue({ me: { id: "u1", familyId: "f1", role: "KID" } } as any);
     deleteManyMock.mockResolvedValue({ count: 1 });
 
     const req = new Request("http://localhost:3000/api/chores/undo", {
@@ -79,8 +75,7 @@ describe("POST /api/chores/undo", () => {
   });
 
   it("rejects undo after parent approval", async () => {
-    getServerSessionMock.mockResolvedValue({ user: { email: "kid@example.com" } } as any);
-    findUserMock.mockResolvedValue({ id: "u1", familyId: "f1", role: "KID" });
+    requireSessionUserMock.mockResolvedValue({ me: { id: "u1", familyId: "f1", role: "KID" } } as any);
     deleteManyMock.mockResolvedValue({ count: 0 });
     findCompletionMock.mockResolvedValue({ status: "APPROVED" });
 

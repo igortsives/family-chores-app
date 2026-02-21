@@ -2,9 +2,10 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireSessionUser } from "@/lib/requireUser";
 import { recomputeStarWeeksForKid } from "@/lib/starProgress";
+import { syncAdultReminderNotificationsForFamily, syncKidReminderNotifications } from "@/lib/notifications";
 
 export async function GET() {
-  const auth = await requireSessionUser();
+  const auth = await requireSessionUser({ source: "api/stars.GET" });
   if ("status" in auth) return NextResponse.json({ error: auth.error }, { status: auth.status });
   const { me } = auth;
 
@@ -76,7 +77,7 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
-  const auth = await requireSessionUser();
+  const auth = await requireSessionUser({ source: "api/stars.POST" });
   if ("status" in auth) return NextResponse.json({ error: auth.error }, { status: auth.status });
   const { me } = auth;
 
@@ -106,6 +107,11 @@ export async function POST(req: Request) {
     data: { userId: me.id, stars, note, status: "PENDING" } as any,
     select: { id: true },
   });
+
+  await Promise.all([
+    syncKidReminderNotifications(me.id, me.familyId),
+    syncAdultReminderNotificationsForFamily(me.familyId),
+  ]);
 
   return NextResponse.json({ ok: true, id: created.id });
 }

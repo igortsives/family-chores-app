@@ -1,27 +1,12 @@
 import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { syncKidReminderNotificationsForFamily } from "@/lib/notifications";
+import { requireAdult } from "@/lib/requireUser";
 
 type Frequency = "DAILY" | "WEEKLY";
 
-async function requireAdult() {
-  const session = await getServerSession(authOptions);
-  const email = session?.user?.email;
-  if (!email) return { status: 401 as const, error: "Unauthorized" as const };
-
-  const me = await prisma.user.findUnique({
-    where: { email },
-    select: { id: true, familyId: true, role: true },
-  });
-  if (!me) return { status: 401 as const, error: "Unauthorized" as const };
-  if (me.role !== "ADULT") return { status: 403 as const, error: "Forbidden" as const };
-
-  return { me };
-}
-
 export async function GET() {
-  const auth = await requireAdult();
+  const auth = await requireAdult({ source: "api/admin/chores.GET" });
   if ("status" in auth) return NextResponse.json({ error: auth.error }, { status: auth.status });
   const { me } = auth;
 
@@ -33,7 +18,12 @@ export async function GET() {
       description: true,
       points: true,
       active: true,
-      assignments: { select: { userId: true } },
+      assignments: {
+        select: {
+          userId: true,
+          user: { select: { role: true } },
+        },
+      },
       schedules: { select: { id: true, frequency: true, dayOfWeek: true } },
     },
     orderBy: [{ active: "desc" }, { title: "asc" }],
@@ -46,7 +36,7 @@ export async function GET() {
       description: c.description,
       points: c.points,
       active: c.active,
-      assignedKidIds: c.assignments.map((a) => a.userId),
+      assignedKidIds: c.assignments.filter((a) => a.user.role === "KID").map((a) => a.userId),
       schedule: c.schedules[0]
         ? { frequency: c.schedules[0].frequency as Frequency, dayOfWeek: c.schedules[0].dayOfWeek ?? null }
         : { frequency: "DAILY" as Frequency, dayOfWeek: null },
@@ -55,7 +45,7 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
-  const auth = await requireAdult();
+  const auth = await requireAdult({ source: "api/admin/chores.POST" });
   if ("status" in auth) return NextResponse.json({ error: auth.error }, { status: auth.status });
   const { me } = auth;
 
@@ -96,11 +86,13 @@ export async function POST(req: Request) {
     select: { id: true },
   });
 
+  await syncKidReminderNotificationsForFamily(me.familyId);
+
   return NextResponse.json({ ok: true, id: chore.id });
 }
 
 export async function PUT(req: Request) {
-  const auth = await requireAdult();
+  const auth = await requireAdult({ source: "api/admin/chores.PUT" });
   if ("status" in auth) return NextResponse.json({ error: auth.error }, { status: auth.status });
   const { me } = auth;
 
@@ -151,11 +143,13 @@ export async function PUT(req: Request) {
     });
   }
 
+  await syncKidReminderNotificationsForFamily(me.familyId);
+
   return NextResponse.json({ ok: true });
 }
 
 export async function DELETE(req: Request) {
-  const auth = await requireAdult();
+  const auth = await requireAdult({ source: "api/admin/chores.DELETE" });
   if ("status" in auth) return NextResponse.json({ error: auth.error }, { status: auth.status });
   const { me } = auth;
 
@@ -170,6 +164,8 @@ export async function DELETE(req: Request) {
   await prisma.choreSchedule.deleteMany({ where: { choreId: id } });
   await prisma.choreInstance.deleteMany({ where: { choreId: id } });
   await prisma.chore.delete({ where: { id } });
+
+  await syncKidReminderNotificationsForFamily(me.familyId);
 
   return NextResponse.json({ ok: true });
 }

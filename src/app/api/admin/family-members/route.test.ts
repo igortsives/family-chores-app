@@ -1,11 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("next-auth", () => ({
-  getServerSession: vi.fn(),
-}));
-
-vi.mock("@/lib/auth", () => ({
-  authOptions: {},
+vi.mock("@/lib/requireUser", () => ({
+  requireAdult: vi.fn(),
 }));
 
 vi.mock("bcryptjs", () => ({
@@ -25,11 +21,11 @@ vi.mock("@/lib/prisma", () => ({
 }));
 
 import bcrypt from "bcryptjs";
-import { getServerSession } from "next-auth";
+import { requireAdult } from "@/lib/requireUser";
 import { prisma } from "@/lib/prisma";
 import { GET, POST, PUT } from "@/app/api/admin/family-members/route";
 
-const getServerSessionMock = vi.mocked(getServerSession);
+const requireAdultMock = vi.mocked(requireAdult);
 const hashMock = vi.mocked((bcrypt as any).hash);
 const findUniqueMock = vi.mocked(prisma.user.findUnique as any);
 const findManyMock = vi.mocked(prisma.user.findMany as any);
@@ -43,7 +39,7 @@ describe("/api/admin/family-members", () => {
   });
 
   it("GET returns 401 when session user id is missing", async () => {
-    getServerSessionMock.mockResolvedValue({ user: {} } as any);
+    requireAdultMock.mockResolvedValue({ status: 401, error: "Unauthorized" } as any);
 
     const res = await GET();
 
@@ -52,9 +48,39 @@ describe("/api/admin/family-members", () => {
     expect(findManyMock).not.toHaveBeenCalled();
   });
 
+  it("GET includes lastLoginAt in family member payload", async () => {
+    requireAdultMock.mockResolvedValue({ me: { id: "adult-1", familyId: "fam-1", role: "ADULT" } } as any);
+    findManyMock.mockResolvedValue([
+      {
+        id: "kid-1",
+        username: "kid1",
+        email: "kid1@example.com",
+        name: "Kid One",
+        avatarUrl: null,
+        role: "KID",
+        isActive: true,
+        isHidden: false,
+        createdAt: new Date("2026-02-20T10:00:00.000Z"),
+        lastLoginAt: new Date("2026-02-21T18:45:00.000Z"),
+      },
+    ]);
+
+    const res = await GET();
+
+    expect(res.status).toBe(200);
+    expect(findManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        select: expect.objectContaining({
+          lastLoginAt: true,
+        }),
+      }),
+    );
+    const json = await res.json();
+    expect(json.members[0].lastLoginAt).toBe("2026-02-21T18:45:00.000Z");
+  });
+
   it("POST returns 400 for oversized avatar payload", async () => {
-    getServerSessionMock.mockResolvedValue({ user: { id: "adult-1" } } as any);
-    findUniqueMock.mockResolvedValue({ id: "adult-1", familyId: "fam-1", role: "ADULT" });
+    requireAdultMock.mockResolvedValue({ me: { id: "adult-1", familyId: "fam-1", role: "ADULT" } } as any);
 
     const huge = "x".repeat(2_000_001);
     const req = new Request("http://localhost:3000/api/admin/family-members", {
@@ -76,10 +102,8 @@ describe("/api/admin/family-members", () => {
   });
 
   it("POST normalizes and stores avatarUrl", async () => {
-    getServerSessionMock.mockResolvedValue({ user: { id: "adult-1" } } as any);
-    findUniqueMock
-      .mockResolvedValueOnce({ id: "adult-1", familyId: "fam-1", role: "ADULT" })
-      .mockResolvedValueOnce(null);
+    requireAdultMock.mockResolvedValue({ me: { id: "adult-1", familyId: "fam-1", role: "ADULT" } } as any);
+    findUniqueMock.mockResolvedValueOnce(null);
     hashMock.mockResolvedValue("hash-1");
     createMock.mockResolvedValue({ id: "kid-1" });
 
@@ -107,8 +131,7 @@ describe("/api/admin/family-members", () => {
   });
 
   it("PUT allows clearing avatar by sending blank value", async () => {
-    getServerSessionMock.mockResolvedValue({ user: { id: "adult-1" } } as any);
-    findUniqueMock.mockResolvedValue({ id: "adult-1", familyId: "fam-1", role: "ADULT" });
+    requireAdultMock.mockResolvedValue({ me: { id: "adult-1", familyId: "fam-1", role: "ADULT" } } as any);
     findFirstMock.mockResolvedValue({ id: "kid-1", username: "kid1" });
     updateMock.mockResolvedValue({});
 

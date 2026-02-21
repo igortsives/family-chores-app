@@ -8,6 +8,11 @@ vi.mock("@/lib/starProgress", () => ({
   recomputeStarWeeksForKid: vi.fn(),
 }));
 
+vi.mock("@/lib/notifications", () => ({
+  syncAdultReminderNotificationsForFamily: vi.fn(),
+  syncKidReminderNotifications: vi.fn(),
+}));
+
 vi.mock("@/lib/prisma", () => ({
   prisma: {
     user: { findMany: vi.fn() },

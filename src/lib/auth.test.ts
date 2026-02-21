@@ -10,6 +10,7 @@ vi.mock("@/lib/prisma", () => ({
   prisma: {
     user: {
       findUnique: vi.fn(),
+      update: vi.fn(),
     },
   },
 }));
@@ -21,6 +22,7 @@ import { authOptions } from "@/lib/auth";
 const authorize = (authOptions.providers[0] as any).options.authorize as (credentials?: Record<string, unknown>) => Promise<unknown>;
 const compareMock = vi.mocked((bcrypt as any).compare);
 const findUserMock = vi.mocked(prisma.user.findUnique as any);
+const updateUserMock = vi.mocked(prisma.user.update as any);
 
 describe("auth credentials provider", () => {
   beforeEach(() => {
@@ -47,6 +49,7 @@ describe("auth credentials provider", () => {
       isHidden: false,
     });
     compareMock.mockResolvedValue(true);
+    updateUserMock.mockResolvedValue({ id: "u1" });
 
     const out = await authorize({ username: "  KiD1  ", password: "kid1234" }) as any;
 
@@ -65,6 +68,10 @@ describe("auth credentials provider", () => {
       },
     });
     expect(compareMock).toHaveBeenCalledWith("kid1234", "hash1");
+    expect(updateUserMock).toHaveBeenCalledWith({
+      where: { id: "u1" },
+      data: { lastLoginAt: expect.any(Date) },
+    });
     expect(out).toMatchObject({
       id: "u1",
       username: "kid1",
@@ -89,6 +96,7 @@ describe("auth credentials provider", () => {
 
     const out = await authorize({ username: "kid1", password: "wrong" });
     expect(out).toBeNull();
+    expect(updateUserMock).not.toHaveBeenCalled();
   });
 
   it("rejects inactive users before password check", async () => {
@@ -107,6 +115,7 @@ describe("auth credentials provider", () => {
     const out = await authorize({ username: "kid1", password: "kid1234" });
     expect(out).toBeNull();
     expect(compareMock).not.toHaveBeenCalled();
+    expect(updateUserMock).not.toHaveBeenCalled();
   });
 
   it("rejects hidden users before password check", async () => {
@@ -125,6 +134,7 @@ describe("auth credentials provider", () => {
     const out = await authorize({ username: "kid1", password: "kid1234" });
     expect(out).toBeNull();
     expect(compareMock).not.toHaveBeenCalled();
+    expect(updateUserMock).not.toHaveBeenCalled();
   });
 });
 

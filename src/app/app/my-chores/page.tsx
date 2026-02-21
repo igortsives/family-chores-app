@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { useSession } from "next-auth/react";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   Alert,
   Box,
@@ -14,14 +15,29 @@ import {
   DialogActions,
   DialogContent,
   DialogTitle,
+  IconButton,
   LinearProgress,
   Stack,
+  Tooltip,
   Typography,
   Chip,
 } from "@mui/material";
 import TokenRoundedIcon from "@mui/icons-material/TokenRounded";
 import EmojiEventsOutlinedIcon from "@mui/icons-material/EmojiEventsOutlined";
+import TaskAltRoundedIcon from "@mui/icons-material/TaskAltRounded";
+import UndoRoundedIcon from "@mui/icons-material/UndoRounded";
+import CheckCircleRoundedIcon from "@mui/icons-material/CheckCircleRounded";
+import ReplayRoundedIcon from "@mui/icons-material/ReplayRounded";
+import HourglassTopRoundedIcon from "@mui/icons-material/HourglassTopRounded";
+import EventBusyRoundedIcon from "@mui/icons-material/EventBusyRounded";
+import CelebrationRoundedIcon from "@mui/icons-material/CelebrationRounded";
 import { addDays, startOfWeekMonday } from "@/lib/week";
+import {
+  areAllChoresDone,
+  kidMotivationMessage,
+  resolveTimeOfDayMode,
+  willAllChoresBeDoneAfterSubmit,
+} from "./ui-helpers";
 
 type Row = {
   choreId: string;
@@ -58,12 +74,15 @@ function toDateKey(d: Date) {
 
 export default function MyChoresPage() {
   const { data: session, status } = useSession();
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const [rows, setRows] = React.useState<Row[] | null>(null);
   const [err, setErr] = React.useState<string | null>(null);
   const [busy, setBusy] = React.useState<Record<string, boolean>>({});
   const [leaderboardRows, setLeaderboardRows] = React.useState<LeaderboardRow[] | null>(null);
   const [leaderboardErr, setLeaderboardErr] = React.useState<string | null>(null);
   const [leaderboardOpen, setLeaderboardOpen] = React.useState(false);
+  const [completionSplash, setCompletionSplash] = React.useState<{ title: string; points: number; allDone: boolean } | null>(null);
   const isKidView = (session?.user as any)?.role === "KID";
   const kidUserId = (session?.user as any)?.id as string | undefined;
   const kidUserEmail = session?.user?.email ?? null;
@@ -84,6 +103,76 @@ export default function MyChoresPage() {
     () => new Intl.DateTimeFormat(undefined, { weekday: "short" }),
     [],
   );
+  const timePreview = searchParams.get("timeOfDay");
+  const forcedMode = timePreview === "morning" || timePreview === "afternoon" || timePreview === "evening"
+    ? timePreview
+    : null;
+  const activeDayMode = React.useMemo<"morning" | "afternoon" | "evening">(() => {
+    return resolveTimeOfDayMode(forcedMode);
+  }, [forcedMode]);
+  const kidMotivation = React.useMemo(() => kidMotivationMessage(activeDayMode), [activeDayMode]);
+  const splashTheme = React.useMemo(() => {
+    if (activeDayMode === "morning") {
+      return {
+        paperBg: "linear-gradient(180deg, #f7fcff 0%, #eef7ff 100%)",
+        border: "#b9dbff",
+        iconBg: "rgba(33,150,243,0.15)",
+        iconColor: "#1565c0",
+        chipBg: "rgba(33,150,243,0.10)",
+        chipBorder: "rgba(33,150,243,0.34)",
+        chipText: "#0d47a1",
+        buttonBg: "#1976d2",
+        buttonHover: "#1565c0",
+        burstA: "rgba(33,150,243,0.85)",
+        burstB: "rgba(79,195,247,0.85)",
+        burstC: "rgba(255,193,7,0.82)",
+      };
+    }
+    if (activeDayMode === "afternoon") {
+      return {
+        paperBg: "linear-gradient(180deg, #fffaf1 0%, #fff4e2 100%)",
+        border: "#f1d298",
+        iconBg: "rgba(255,167,38,0.18)",
+        iconColor: "#b35a00",
+        chipBg: "rgba(255,167,38,0.13)",
+        chipBorder: "rgba(255,167,38,0.38)",
+        chipText: "#8a4b00",
+        buttonBg: "#ef6c00",
+        buttonHover: "#e65100",
+        burstA: "rgba(255,167,38,0.85)",
+        burstB: "rgba(255,204,128,0.86)",
+        burstC: "rgba(255,112,67,0.82)",
+      };
+    }
+    return {
+      paperBg: "linear-gradient(180deg, #f5f3ff 0%, #eee9ff 100%)",
+      border: "#cfc3ff",
+      iconBg: "rgba(126,87,194,0.18)",
+      iconColor: "#5e35b1",
+      chipBg: "rgba(126,87,194,0.12)",
+      chipBorder: "rgba(126,87,194,0.34)",
+      chipText: "#4527a0",
+      buttonBg: "#5e35b1",
+      buttonHover: "#512da8",
+      burstA: "rgba(126,87,194,0.85)",
+      burstB: "rgba(149,117,205,0.86)",
+      burstC: "rgba(179,157,219,0.82)",
+    };
+  }, [activeDayMode]);
+  const splashFireworks = React.useMemo(
+    () => [
+      { left: "15%", top: "22%", delay: "0ms", colorKey: "burstA" as const },
+      { left: "86%", top: "24%", delay: "120ms", colorKey: "burstB" as const },
+      { left: "26%", top: "62%", delay: "220ms", colorKey: "burstC" as const },
+      { left: "76%", top: "66%", delay: "320ms", colorKey: "burstA" as const },
+      { left: "52%", top: "14%", delay: "420ms", colorKey: "burstB" as const },
+    ],
+    [],
+  );
+  const allChoresDone = React.useMemo(() => areAllChoresDone(rows, isKidView), [isKidView, rows]);
+  const kidSubheading = allChoresDone
+    ? "Awesome job! You finished all your chores."
+    : kidMotivation;
 
   const load = React.useCallback(async () => {
     setErr(null);
@@ -94,7 +183,9 @@ export default function MyChoresPage() {
       throw new Error(j?.error || `Failed to load (${res.status})`);
     }
     const data = await res.json();
-    setRows(data.chores);
+    const chores = Array.isArray(data?.chores) ? (data.chores as Row[]) : [];
+    setRows(chores);
+    return chores;
   }, [selectedDateKey]);
 
   const loadLeaderboard = React.useCallback(async () => {
@@ -107,8 +198,13 @@ export default function MyChoresPage() {
   }, [isKidView]);
 
   React.useEffect(() => {
-    if (status === "authenticated") load().catch((e) => setErr(String(e?.message || e)));
-  }, [status, load]);
+    if (status !== "authenticated") return;
+    if (!isKidView) {
+      router.replace("/app/admin/stats");
+      return;
+    }
+    load().catch((e) => setErr(String(e?.message || e)));
+  }, [status, isKidView, load, router]);
 
   React.useEffect(() => {
     if (status === "authenticated" && isKidView) {
@@ -150,6 +246,15 @@ export default function MyChoresPage() {
     }
   }, [leaderboardRows, loadLeaderboard]);
 
+  if (status === "authenticated" && !isKidView) {
+    return (
+      <Stack direction="row" spacing={1.5} alignItems="center">
+        <CircularProgress size={18} />
+        <Typography>Redirecting…</Typography>
+      </Stack>
+    );
+  }
+
   async function markDone(r: Row) {
     setBusy((b) => ({ ...b, [r.choreId]: true }));
     setErr(null);
@@ -161,7 +266,12 @@ export default function MyChoresPage() {
       });
       const j = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(j?.error || `Failed (${res.status})`);
-      await load();
+
+      if (isKidView) {
+        const allDoneAfterSubmit = willAllChoresBeDoneAfterSubmit(rows, r.choreId);
+        setCompletionSplash({ title: r.title, points: r.points, allDone: allDoneAfterSubmit });
+      }
+      void load().catch((e) => setErr(String(e?.message || e)));
     } catch (e: any) {
       setErr(String(e?.message || e));
     } finally {
@@ -199,7 +309,7 @@ export default function MyChoresPage() {
 
   if (status === "loading") {
     return (
-      <Container maxWidth="md" sx={{ py: 4 }}>
+      <Container maxWidth="md" sx={{ pt: 0 }}>
         <Stack direction="row" spacing={2} alignItems="center">
           <CircularProgress size={22} />
           <Typography>Loading session…</Typography>
@@ -209,13 +319,13 @@ export default function MyChoresPage() {
   }
 
   return (
-    <Container maxWidth="md" sx={{ py: 4 }}>
+    <Container maxWidth="md" sx={{ pt: 0 }}>
       <Stack spacing={2}>
         <Box>
-          <Typography variant="h4">{isKidView ? "Today's chores" : "My chores"}</Typography>
+          <Typography variant="h4">{isKidView ? "Chores" : "My chores"}</Typography>
           <Typography color="text.secondary">
             {isKidView
-              ? "Tap when you finish a chore. A parent will check it."
+              ? kidSubheading
               : "Mark chores done. If you're a kid, a parent must approve."}
           </Typography>
         </Box>
@@ -414,6 +524,30 @@ export default function MyChoresPage() {
                   : isKidView
                     ? "I finished this"
                     : "Mark done";
+          const kidActionIcon = busy[r.choreId]
+            ? <CircularProgress size={20} color="inherit" />
+            : canUndo
+              ? <UndoRoundedIcon />
+              : r.todayStatus === "APPROVED"
+                ? <CheckCircleRoundedIcon />
+                : isRejected
+                  ? <ReplayRoundedIcon />
+                  : !canSubmitForDay
+                    ? <EventBusyRoundedIcon />
+                    : r.todayStatus === "PENDING"
+                      ? <HourglassTopRoundedIcon />
+                      : <TaskAltRoundedIcon />;
+          const kidActionPalette = canUndo
+            ? { color: "warning.dark", bgcolor: "rgba(237,108,2,0.12)", borderColor: "rgba(237,108,2,0.45)" }
+            : r.todayStatus === "APPROVED"
+              ? { color: "success.main", bgcolor: "rgba(46,125,50,0.14)", borderColor: "rgba(46,125,50,0.40)" }
+              : isRejected
+                ? { color: "#8a4b00", bgcolor: "rgba(237,108,2,0.16)", borderColor: "rgba(237,108,2,0.52)" }
+                : !canSubmitForDay
+                  ? { color: "text.disabled", bgcolor: "rgba(0,0,0,0.04)", borderColor: "rgba(0,0,0,0.20)" }
+                  : r.todayStatus === "PENDING"
+                    ? { color: "warning.dark", bgcolor: "rgba(237,108,2,0.10)", borderColor: "rgba(237,108,2,0.38)" }
+                    : { color: "common.white", bgcolor: "primary.main", borderColor: "primary.main" };
 
           return (
             <Card key={r.choreId} variant="outlined" data-testid={`chore-card-${r.choreId}`}>
@@ -454,15 +588,58 @@ export default function MyChoresPage() {
                       )}
                     </Box>
 
-                    <Button
-                      data-testid={`chore-action-${r.choreId}`}
-                      variant={canUndo ? "outlined" : "contained"}
-                      color={canUndo ? "inherit" : isRejected ? "warning" : "primary"}
-                      disabled={disabled}
-                      onClick={() => (canUndo ? undoDone(r) : markDone(r))}
-                    >
-                      {label}
-                    </Button>
+                    {isKidView ? (
+                      <Tooltip title={label} placement="left">
+                        <Box component="span">
+                          <IconButton
+                            data-testid={`chore-action-${r.choreId}`}
+                            aria-label={label}
+                            disabled={disabled}
+                            onClick={() => (canUndo ? undoDone(r) : markDone(r))}
+                            sx={{
+                              width: 56,
+                              height: 56,
+                              borderRadius: "50%",
+                              border: "2px solid",
+                              color: kidActionPalette.color,
+                              bgcolor: kidActionPalette.bgcolor,
+                              borderColor: kidActionPalette.borderColor,
+                              transition: "transform 120ms ease, background-color 120ms ease, box-shadow 120ms ease",
+                              "&:hover": disabled
+                                ? undefined
+                                : {
+                                    transform: "translateY(-1px)",
+                                    boxShadow: "0 6px 14px rgba(15,23,42,0.14)",
+                                    bgcolor: canUndo
+                                      ? "rgba(237,108,2,0.18)"
+                                      : isRejected
+                                        ? "rgba(237,108,2,0.22)"
+                                        : "primary.dark",
+                                    color: canUndo || isRejected ? kidActionPalette.color : "common.white",
+                                  },
+                              "&.Mui-disabled": {
+                                opacity: 1,
+                                color: kidActionPalette.color,
+                                bgcolor: kidActionPalette.bgcolor,
+                                borderColor: kidActionPalette.borderColor,
+                              },
+                            }}
+                          >
+                            {kidActionIcon}
+                          </IconButton>
+                        </Box>
+                      </Tooltip>
+                    ) : (
+                      <Button
+                        data-testid={`chore-action-${r.choreId}`}
+                        variant={canUndo ? "outlined" : "contained"}
+                        color={canUndo ? "inherit" : isRejected ? "warning" : "primary"}
+                        disabled={disabled}
+                        onClick={() => (canUndo ? undoDone(r) : markDone(r))}
+                      >
+                        {label}
+                      </Button>
+                    )}
                   </Stack>
                 </Stack>
               </CardContent>
@@ -470,6 +647,128 @@ export default function MyChoresPage() {
           );
         })}
       </Stack>
+
+      <Dialog
+        open={isKidView && Boolean(completionSplash)}
+        onClose={() => setCompletionSplash(null)}
+        fullWidth
+        maxWidth="xs"
+        PaperProps={{
+          sx: {
+            borderRadius: 3,
+            border: "1px solid",
+            borderColor: splashTheme.border,
+            backgroundImage: splashTheme.paperBg,
+            boxShadow: "0 16px 34px rgba(15,23,42,0.20)",
+          },
+        }}
+      >
+        <DialogContent
+          sx={{
+            pt: 2.5,
+            pb: 1.5,
+            position: "relative",
+            overflow: "hidden",
+            "@keyframes splashBurst": {
+              "0%": { transform: "translate(-50%, -50%) scale(0.12)", opacity: 0 },
+              "18%": { opacity: 0.95 },
+              "70%": { transform: "translate(-50%, -50%) scale(1)", opacity: 0.42 },
+              "100%": { transform: "translate(-50%, -50%) scale(1.28)", opacity: 0 },
+            },
+          }}
+        >
+          <Box sx={{ position: "absolute", inset: 0, pointerEvents: "none" }}>
+            {splashFireworks.map((fx, idx) => {
+              const burstColor = splashTheme[fx.colorKey];
+              return (
+                <Box
+                  key={`splash-firework-${idx}`}
+                  sx={{
+                    position: "absolute",
+                    left: fx.left,
+                    top: fx.top,
+                    width: 10,
+                    height: 10,
+                    borderRadius: "50%",
+                    bgcolor: burstColor,
+                    opacity: 0,
+                    transform: "translate(-50%, -50%) scale(0.12)",
+                    boxShadow: `
+                      0 -18px 0 0 ${burstColor},
+                      13px -13px 0 0 ${burstColor},
+                      18px 0 0 0 ${burstColor},
+                      13px 13px 0 0 ${burstColor},
+                      0 18px 0 0 ${burstColor},
+                      -13px 13px 0 0 ${burstColor},
+                      -18px 0 0 0 ${burstColor},
+                      -13px -13px 0 0 ${burstColor}
+                    `,
+                    animation: `splashBurst 900ms ease-out ${fx.delay} 1 forwards`,
+                  }}
+                />
+              );
+            })}
+          </Box>
+          <Stack alignItems="center" spacing={1.25} textAlign="center" sx={{ position: "relative", zIndex: 1 }}>
+            <Box
+              sx={{
+                width: 64,
+                height: 64,
+                borderRadius: "50%",
+                bgcolor: splashTheme.iconBg,
+                color: splashTheme.iconColor,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              <CelebrationRoundedIcon sx={{ fontSize: 34 }} />
+            </Box>
+            <Typography variant="h6" sx={{ fontWeight: 900 }}>
+              {completionSplash?.allDone ? "All chores finished for today!" : "Awesome job!"}
+            </Typography>
+            <Typography color="text.secondary">
+              {completionSplash?.allDone
+                ? (
+                  <>
+                    You finished <b>{completionSplash?.title}</b> and completed all your chores for today.
+                  </>
+                )
+                : (
+                  <>
+                    You finished <b>{completionSplash?.title}</b>.
+                  </>
+                )}
+            </Typography>
+            <Chip
+              icon={<TokenRoundedIcon />}
+              variant="outlined"
+              label={`+${completionSplash?.points ?? 0} coins (after parent approval)`}
+              sx={{
+                bgcolor: splashTheme.chipBg,
+                borderColor: splashTheme.chipBorder,
+                color: splashTheme.chipText,
+                "& .MuiChip-icon": { color: splashTheme.chipText },
+              }}
+            />
+          </Stack>
+        </DialogContent>
+        <DialogActions sx={{ px: 2, pb: 2, justifyContent: "center" }}>
+          <Button
+            onClick={() => setCompletionSplash(null)}
+            variant="contained"
+            size="small"
+            sx={{
+              bgcolor: splashTheme.buttonBg,
+              px: 2,
+              minWidth: 0,
+              "&:hover": { bgcolor: splashTheme.buttonHover },
+            }}
+          >
+            {completionSplash?.allDone ? "Done for today" : "Keep going"}
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       <Dialog open={isKidView && leaderboardOpen} onClose={() => setLeaderboardOpen(false)} fullWidth maxWidth="sm">
         <DialogTitle>Leaderboard</DialogTitle>

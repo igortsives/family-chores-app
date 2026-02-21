@@ -6,7 +6,7 @@ import { addDays, startOfWeekMonday } from "@/lib/week";
 import { recomputeStarWeeksForKid } from "@/lib/starProgress";
 
 export async function GET() {
-  const auth = await requireAdult();
+  const auth = await requireAdult({ source: "api/admin/family-stats.GET" });
   if ("status" in auth) return NextResponse.json({ error: auth.error }, { status: auth.status });
   const { me } = auth;
 

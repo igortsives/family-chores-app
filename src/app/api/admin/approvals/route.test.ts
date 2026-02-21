@@ -1,11 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("next-auth", () => ({
-  getServerSession: vi.fn(),
-}));
-
-vi.mock("@/lib/auth", () => ({
-  authOptions: {},
+vi.mock("@/lib/requireUser", () => ({
+  requireAdult: vi.fn(),
 }));
 
 vi.mock("@/lib/prisma", () => ({
@@ -31,15 +27,16 @@ vi.mock("@/lib/prisma", () => ({
 
 vi.mock("@/lib/notifications", () => ({
   createNotification: vi.fn(),
+  syncAdultReminderNotificationsForFamily: vi.fn(),
+  syncKidReminderNotifications: vi.fn(),
 }));
 
-import { getServerSession } from "next-auth";
+import { requireAdult } from "@/lib/requireUser";
 import { prisma } from "@/lib/prisma";
 import { createNotification } from "@/lib/notifications";
 import { GET, POST } from "@/app/api/admin/approvals/route";
 
-const getServerSessionMock = vi.mocked(getServerSession);
-const findUserMock = vi.mocked(prisma.user.findUnique as any);
+const requireAdultMock = vi.mocked(requireAdult);
 const findPendingMock = vi.mocked(prisma.choreCompletion.findMany as any);
 const findCompletionMock = vi.mocked(prisma.choreCompletion.findFirst as any);
 const updateCompletionMock = vi.mocked(prisma.choreCompletion.update as any);
@@ -54,18 +51,17 @@ describe("admin approvals", () => {
     vi.clearAllMocks();
   });
 
-  it("GET returns 401 when session has no email", async () => {
-    getServerSessionMock.mockResolvedValue({ user: {} } as any);
+  it("GET returns 401 when auth guard rejects", async () => {
+    requireAdultMock.mockResolvedValue({ status: 401, error: "Unauthorized" } as any);
 
     const res = await GET();
     expect(res.status).toBe(401);
     await expect(res.json()).resolves.toEqual({ error: "Unauthorized" });
-    expect(findUserMock).not.toHaveBeenCalled();
+    expect(findPendingMock).not.toHaveBeenCalled();
   });
 
   it("GET returns 403 for kid role", async () => {
-    getServerSessionMock.mockResolvedValue({ user: { email: "kid1@example.com" } } as any);
-    findUserMock.mockResolvedValue({ id: "u1", familyId: "fam1", role: "KID" });
+    requireAdultMock.mockResolvedValue({ status: 403, error: "Forbidden" } as any);
 
     const res = await GET();
     expect(res.status).toBe(403);
@@ -73,8 +69,7 @@ describe("admin approvals", () => {
   });
 
   it("POST requires rejection reason for REJECT action", async () => {
-    getServerSessionMock.mockResolvedValue({ user: { email: "adult@example.com" } } as any);
-    findUserMock.mockResolvedValue({ id: "adult-1", familyId: "fam-1", role: "ADULT" });
+    requireAdultMock.mockResolvedValue({ me: { id: "adult-1", familyId: "fam-1", role: "ADULT" } } as any);
 
     const req = new Request("http://localhost/api/admin/approvals", {
       method: "POST",
@@ -90,8 +85,7 @@ describe("admin approvals", () => {
   });
 
   it("POST APPROVE updates completion, grants awards, and sends success notification", async () => {
-    getServerSessionMock.mockResolvedValue({ user: { email: "adult@example.com" } } as any);
-    findUserMock.mockResolvedValue({ id: "adult-1", familyId: "fam-1", role: "ADULT" });
+    requireAdultMock.mockResolvedValue({ me: { id: "adult-1", familyId: "fam-1", role: "ADULT" } } as any);
 
     findCompletionMock.mockResolvedValue({ id: "c1", userId: "kid-1", user: { role: "KID" } });
     updateCompletionMock.mockResolvedValue({ id: "c1" });
@@ -138,8 +132,7 @@ describe("admin approvals", () => {
   });
 
   it("POST REJECT stores reason and sends error notification", async () => {
-    getServerSessionMock.mockResolvedValue({ user: { email: "adult@example.com" } } as any);
-    findUserMock.mockResolvedValue({ id: "adult-1", familyId: "fam-1", role: "ADULT" });
+    requireAdultMock.mockResolvedValue({ me: { id: "adult-1", familyId: "fam-1", role: "ADULT" } } as any);
 
     findCompletionMock.mockResolvedValue({ id: "c1", userId: "kid-1", user: { role: "KID" } });
     updateCompletionMock.mockResolvedValue({ id: "c1" });
@@ -172,8 +165,8 @@ describe("admin approvals", () => {
     );
   });
 
-  it("POST returns 401 when session has no email", async () => {
-    getServerSessionMock.mockResolvedValue({ user: {} } as any);
+  it("POST returns 401 when auth guard rejects", async () => {
+    requireAdultMock.mockResolvedValue({ status: 401, error: "Unauthorized" } as any);
 
     const req = new Request("http://localhost/api/admin/approvals", {
       method: "POST",
@@ -187,8 +180,7 @@ describe("admin approvals", () => {
   });
 
   it("GET maps pending approvals payload", async () => {
-    getServerSessionMock.mockResolvedValue({ user: { email: "adult@example.com" } } as any);
-    findUserMock.mockResolvedValue({ id: "adult-1", familyId: "fam-1", role: "ADULT" });
+    requireAdultMock.mockResolvedValue({ me: { id: "adult-1", familyId: "fam-1", role: "ADULT" } } as any);
     findPendingMock.mockResolvedValue([
       {
         id: "c1",

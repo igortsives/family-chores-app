@@ -1,28 +1,23 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("next-auth", () => ({
-  getServerSession: vi.fn(),
-}));
-
-vi.mock("@/lib/auth", () => ({
-  authOptions: {},
+vi.mock("@/lib/requireUser", () => ({
+  requireSessionUser: vi.fn(),
 }));
 
 vi.mock("@/lib/prisma", () => ({
   prisma: {
-    user: { findUnique: vi.fn(), findMany: vi.fn() },
+    user: { findMany: vi.fn() },
     award: { findMany: vi.fn() },
     choreAssignment: { findMany: vi.fn() },
     choreCompletion: { findMany: vi.fn(), groupBy: vi.fn() },
   },
 }));
 
-import { getServerSession } from "next-auth";
+import { requireSessionUser } from "@/lib/requireUser";
 import { prisma } from "@/lib/prisma";
 import { GET } from "@/app/api/leaderboard/route";
 
-const getServerSessionMock = vi.mocked(getServerSession);
-const findMeMock = vi.mocked(prisma.user.findUnique as any);
+const requireSessionUserMock = vi.mocked(requireSessionUser);
 const findKidsMock = vi.mocked(prisma.user.findMany as any);
 const findAwardsMock = vi.mocked(prisma.award.findMany as any);
 const findAssignmentsMock = vi.mocked(prisma.choreAssignment.findMany as any);
@@ -35,8 +30,7 @@ describe("GET /api/leaderboard", () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-02-18T12:00:00.000Z"));
 
-    getServerSessionMock.mockResolvedValue({ user: { email: "adult@example.com" } } as any);
-    findMeMock.mockResolvedValue({ id: "adult-1", familyId: "fam-1" });
+    requireSessionUserMock.mockResolvedValue({ me: { id: "adult-1", familyId: "fam-1", role: "ADULT" } } as any);
     findAwardsMock.mockResolvedValue([]);
   });
 
@@ -44,8 +38,8 @@ describe("GET /api/leaderboard", () => {
     vi.useRealTimers();
   });
 
-  it("returns 401 when session email is missing", async () => {
-    getServerSessionMock.mockResolvedValue({ user: {} } as any);
+  it("returns 401 when auth guard rejects", async () => {
+    requireSessionUserMock.mockResolvedValue({ status: 401, error: "Unauthorized" } as any);
 
     const res = await GET();
 

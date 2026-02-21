@@ -1,12 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { Prisma } from "@prisma/client";
 
-vi.mock("next-auth", () => ({
-  getServerSession: vi.fn(),
-}));
-
-vi.mock("@/lib/auth", () => ({
-  authOptions: {},
+vi.mock("@/lib/requireUser", () => ({
+  requireSessionUser: vi.fn(),
 }));
 
 vi.mock("@/lib/prisma", () => ({
@@ -23,12 +19,11 @@ vi.mock("@/lib/prisma", () => ({
   },
 }));
 
-import { getServerSession } from "next-auth";
+import { requireSessionUser } from "@/lib/requireUser";
 import { prisma } from "@/lib/prisma";
 import { GET } from "@/app/api/my-chores/route";
 
-const getServerSessionMock = vi.mocked(getServerSession);
-const findUserMock = vi.mocked(prisma.user.findUnique as any);
+const requireSessionUserMock = vi.mocked(requireSessionUser);
 const findChoresMock = vi.mocked(prisma.chore.findMany as any);
 const findInstancesMock = vi.mocked(prisma.choreInstance.findMany as any);
 
@@ -44,24 +39,23 @@ describe("GET /api/my-chores", () => {
     vi.clearAllMocks();
   });
 
-  it("returns 401 when session has no email", async () => {
-    getServerSessionMock.mockResolvedValue({ user: {} } as any);
+  it("returns 401 when auth guard rejects", async () => {
+    requireSessionUserMock.mockResolvedValue({ status: 401, error: "Unauthorized" } as any);
 
     const res = await GET();
     expect(res.status).toBe(401);
     await expect(res.json()).resolves.toEqual({ error: "Unauthorized" });
-    expect(findUserMock).not.toHaveBeenCalled();
+    expect(findChoresMock).not.toHaveBeenCalled();
   });
 
   it("returns 400 for an invalid date query", async () => {
-    getServerSessionMock.mockResolvedValue({ user: { email: "kid@example.com" } } as any);
-    findUserMock.mockResolvedValue({
+    requireSessionUserMock.mockResolvedValue({ me: {
       id: "u1",
       familyId: "f1",
       role: "KID",
       name: "Kid",
       email: "kid@example.com",
-    });
+    } } as any);
 
     const req = new Request("http://localhost:3000/api/my-chores?date=2026-02-99");
     const res = await GET(req);
@@ -69,15 +63,29 @@ describe("GET /api/my-chores", () => {
     await expect(res.json()).resolves.toEqual({ error: "Invalid date. Use YYYY-MM-DD." });
   });
 
+  it("returns 403 for adult users", async () => {
+    requireSessionUserMock.mockResolvedValue({ me: {
+      id: "u1",
+      familyId: "f1",
+      role: "ADULT",
+      name: "Parent",
+      email: "parent@example.com",
+    } } as any);
+
+    const res = await GET();
+    expect(res.status).toBe(403);
+    await expect(res.json()).resolves.toEqual({ error: "Only kids can view chores" });
+    expect(findChoresMock).not.toHaveBeenCalled();
+  });
+
   it("filters chores by selected day schedule and returns selected date in response", async () => {
-    getServerSessionMock.mockResolvedValue({ user: { email: "kid@example.com" } } as any);
-    findUserMock.mockResolvedValue({
+    requireSessionUserMock.mockResolvedValue({ me: {
       id: "u1",
       familyId: "f1",
       role: "KID",
       name: "Kid",
       email: "kid@example.com",
-    });
+    } } as any);
 
     findChoresMock.mockResolvedValue([
       { id: "c1", title: "Unload Dishwasher", description: "Daily", points: 3, active: true },
@@ -125,14 +133,13 @@ describe("GET /api/my-chores", () => {
   });
 
   it("falls back when rejectionReason column is missing", async () => {
-    getServerSessionMock.mockResolvedValue({ user: { email: "kid@example.com" } } as any);
-    findUserMock.mockResolvedValue({
+    requireSessionUserMock.mockResolvedValue({ me: {
       id: "u1",
       familyId: "f1",
       role: "KID",
       name: "Kid",
       email: "kid@example.com",
-    });
+    } } as any);
 
     findChoresMock.mockResolvedValue([
       { id: "c1", title: "Unload Dishwasher", description: "Daily", points: 3, active: true },

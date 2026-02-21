@@ -42,6 +42,7 @@ type Member = {
   email: string;
   name: string | null;
   avatarUrl?: string | null;
+  lastLoginAt?: string | null;
   role: "ADULT" | "KID";
   isActive?: boolean;
   isHidden?: boolean;
@@ -241,6 +242,42 @@ export default function FamilyMembersPage() {
       return roleOk && activeOk && visibilityOk && searchOk;
     });
   }, [members, roleFilter, activeFilter, visibilityFilter, memberQuery]);
+  const lastLoginFormatter = React.useMemo(
+    () =>
+      new Intl.DateTimeFormat(undefined, {
+        year: "numeric",
+        month: "short",
+        day: "numeric",
+        hour: "numeric",
+        minute: "2-digit",
+      }),
+    [],
+  );
+  const formatLastLogin = React.useCallback(
+    (value?: string | null) => {
+      if (!value) return "Never";
+      const date = new Date(value);
+      if (Number.isNaN(date.getTime())) return "Never";
+      const now = new Date();
+      const diffMs = Math.max(0, now.getTime() - date.getTime());
+      const seconds = Math.floor(diffMs / 1000);
+      if (seconds < 60) return `${Math.max(1, seconds)} second${seconds === 1 ? "" : "s"} ago`;
+
+      const minutes = Math.floor(diffMs / 60_000);
+      if (minutes < 60) return `${minutes} minute${minutes === 1 ? "" : "s"} ago`;
+      if (minutes < 120) return "an hour ago";
+      if (minutes < 6 * 60) return "a few hours ago";
+
+      const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      const startOfLoginDay = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+      const dayDiff = Math.round((startOfToday.getTime() - startOfLoginDay.getTime()) / 86_400_000);
+      if (dayDiff === 0) return "today";
+      if (dayDiff === 1) return "yesterday";
+
+      return lastLoginFormatter.format(date);
+    },
+    [lastLoginFormatter],
+  );
 
   const sortedMembers = React.useMemo(() => {
     if (!filteredMembers) return null;
@@ -520,19 +557,18 @@ export default function FamilyMembersPage() {
                     <Box
                       sx={{
                         display: "grid",
-                        gridTemplateColumns: "32px minmax(0, 1fr)",
+                        gridTemplateColumns: "44px minmax(0, 1fr)",
                         columnGap: 0.9,
-                        alignItems: "start",
+                        alignItems: "center",
                       }}
                     >
                       <Avatar
                         className="member-avatar"
                         src={m.avatarUrl || undefined}
                         sx={{
-                          width: 32,
-                          height: 32,
-                          gridRow: "1 / span 2",
-                          fontSize: "0.84rem",
+                          width: 44,
+                          height: 44,
+                          fontSize: "0.96rem",
                           filter: isInactive ? "grayscale(0.25)" : "none",
                         }}
                       >
@@ -540,7 +576,7 @@ export default function FamilyMembersPage() {
                       </Avatar>
 
                       <Stack spacing={0}>
-                        <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ minWidth: 0 }}>
+                        <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ minWidth: 0, gap: 0.6 }}>
                           <Stack direction="row" spacing={0.45} alignItems="center" sx={{ minWidth: 0 }}>
                             <Typography fontWeight={600} variant="body2" sx={{ minWidth: 0 }}>
                               {m.name || m.username}
@@ -598,7 +634,7 @@ export default function FamilyMembersPage() {
                             label={isActive ? "Active" : "Inactive"}
                             sx={{
                               height: 18,
-                              ml: 0.6,
+                              width: 86,
                               flexShrink: 0,
                               "& .MuiChip-label": { px: 0.6, fontSize: "0.66rem" },
                               ...(isActive
@@ -627,6 +663,19 @@ export default function FamilyMembersPage() {
                           }}
                         >
                           {`${m.username} · ${m.email}`}
+                        </Typography>
+                        <Typography
+                          variant="caption"
+                          sx={{
+                            mt: 0.05,
+                            minWidth: 0,
+                            whiteSpace: "normal",
+                            wordBreak: "break-word",
+                            color: "text.disabled",
+                            fontStyle: "italic",
+                          }}
+                        >
+                          Last login: {formatLastLogin(m.lastLoginAt)}
                         </Typography>
                       </Stack>
                     </Box>

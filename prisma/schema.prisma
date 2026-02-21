@@ -45,6 +45,7 @@ model User {
   email        String   @unique
   name         String?
   avatarUrl    String?
+  lastLoginAt  DateTime?
   role         Role
   passwordHash String
   familyId     String
@@ -66,6 +67,7 @@ model User {
   starReviews StarExchange[] @relation("StarExchange_reviewedBy")
   notifications Notification[]
 
+  @@index([familyId, role, isActive, isHidden])
 }
 
 model Chore {
@@ -80,6 +82,8 @@ model Chore {
   schedules   ChoreSchedule[]
   assignments ChoreAssignment[]
   instances   ChoreInstance[]
+
+  @@index([familyId, active])
 }
 
 model ChoreSchedule {
@@ -103,6 +107,7 @@ model ChoreAssignment {
   createdAt DateTime @default(now())
 
   @@unique([choreId, userId])
+  @@index([userId])
 }
 
 model ChoreInstance {
@@ -114,6 +119,9 @@ model ChoreInstance {
   createdAt DateTime @default(now())
 
   completions ChoreCompletion[]
+
+  @@index([familyId, dueDate])
+  @@index([choreId, familyId, dueDate])
 }
 
 model ChoreCompletion {
@@ -134,6 +142,9 @@ model ChoreCompletion {
   rejectionReason String?
 
   awardsGranted UserAward[]
+
+  @@index([userId, status, completedAt])
+  @@index([choreInstanceId, userId, completedAt])
 }
 
 model Notification {
@@ -153,6 +164,8 @@ model Notification {
 
   @@unique([userId, sourceKey])
   @@index([userId, dismissedAt])
+  @@index([userId, dismissedAt, readAt])
+  @@index([userId, dismissedAt, kind, createdAt])
 }
 
 model Award {

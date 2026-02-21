@@ -1,18 +1,12 @@
 import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { syncAdultReminderNotificationsForFamily, syncKidReminderNotifications } from "@/lib/notifications";
+import { requireSessionUser } from "@/lib/requireUser";
 
 export async function POST(req: Request) {
-  const session = await getServerSession(authOptions);
-  const email = session?.user?.email;
-  if (!email) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-
-  const user = await prisma.user.findUnique({
-    where: { email },
-    select: { id: true, familyId: true, role: true },
-  });
-  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const auth = await requireSessionUser({ source: "api/chores/undo.POST" });
+  if ("status" in auth) return NextResponse.json({ error: auth.error }, { status: auth.status });
+  const { me: user } = auth;
   if (user.role !== "KID") return NextResponse.json({ error: "Only kids can undo completion" }, { status: 403 });
 
   const body = await req.json().catch(() => ({}));
@@ -27,7 +21,13 @@ export async function POST(req: Request) {
       choreInstance: { familyId: user.familyId },
     },
   });
-  if (deleted.count > 0) return NextResponse.json({ ok: true, status: "NOT_DONE" });
+  if (deleted.count > 0) {
+    await Promise.all([
+      syncKidReminderNotifications(user.id, user.familyId),
+      syncAdultReminderNotificationsForFamily(user.familyId),
+    ]);
+    return NextResponse.json({ ok: true, status: "NOT_DONE" });
+  }
 
   const completion = await prisma.choreCompletion.findFirst({
     where: {

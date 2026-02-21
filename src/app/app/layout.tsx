@@ -10,11 +10,14 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const role = (session?.user as any)?.role as "ADULT" | "KID" | undefined;
   const username = (session?.user as any)?.username as string | undefined;
   const name = (session?.user as any)?.name as string | undefined;
+  const avatarUrl = ((session?.user as any)?.avatarUrl as string | undefined)
+    ?? ((session?.user as any)?.image as string | undefined)
+    ?? null;
 
   return (
     <ThemeRegistry>
       <Providers>
-        <BrandShell role={role} username={username} name={name}>
+        <BrandShell role={role} username={username} name={name} avatarUrl={avatarUrl}>
           {children}
         </BrandShell>
       </Providers>

@@ -1,26 +1,14 @@
 import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { createNotification } from "@/lib/notifications";
-
-async function requireAdult() {
-  const session = await getServerSession(authOptions);
-  const email = session?.user?.email;
-  if (!email) return { status: 401 as const, error: "Unauthorized" as const };
-
-  const me = await prisma.user.findUnique({
-    where: { email },
-    select: { id: true, familyId: true, role: true },
-  });
-  if (!me) return { status: 401 as const, error: "Unauthorized" as const };
-  if (me.role !== "ADULT") return { status: 403 as const, error: "Forbidden" as const };
-
-  return { me };
-}
+import {
+  createNotification,
+  syncAdultReminderNotificationsForFamily,
+  syncKidReminderNotifications,
+} from "@/lib/notifications";
+import { requireAdult } from "@/lib/requireUser";
 
 export async function GET() {
-  const auth = await requireAdult();
+  const auth = await requireAdult({ source: "api/admin/approvals.GET" });
   if ("status" in auth) return NextResponse.json({ error: auth.error }, { status: auth.status });
   const { me } = auth;
 
@@ -57,7 +45,7 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
-  const auth = await requireAdult();
+  const auth = await requireAdult({ source: "api/admin/approvals.POST" });
   if ("status" in auth) return NextResponse.json({ error: auth.error }, { status: auth.status });
   const { me } = auth;
 
@@ -136,6 +124,11 @@ export async function POST(req: Request) {
       href: "/app/my-chores",
     });
 
+    await Promise.all([
+      syncKidReminderNotifications(completion.userId, me.familyId),
+      syncAdultReminderNotificationsForFamily(me.familyId),
+    ]);
+
     return NextResponse.json({ ok: true, status: "APPROVED" });
   }
 
@@ -160,6 +153,11 @@ export async function POST(req: Request) {
     message: `Parent note: ${rejectionReason}`,
     href: "/app/my-chores",
   });
+
+  await Promise.all([
+    syncKidReminderNotifications(completion.userId, me.familyId),
+    syncAdultReminderNotificationsForFamily(me.familyId),
+  ]);
 
   return NextResponse.json({ ok: true, status: "REJECTED" });
 }

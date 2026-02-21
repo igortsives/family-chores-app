@@ -8,6 +8,7 @@ import {
   Card,
   CardContent,
   Chip,
+  Container,
   Dialog,
   DialogActions,
   DialogContent,
@@ -43,6 +44,7 @@ function playfulStarProgressText(progressPctRaw: number) {
 export default function AwardsPage() {
   const [data, setData] = React.useState<any>(null);
   const [err, setErr] = React.useState<string | null>(null);
+  const [animatedNextStarPct, setAnimatedNextStarPct] = React.useState(0);
 
   const [open, setOpen] = React.useState(false);
   const [stars, setStars] = React.useState<number>(1);
@@ -78,6 +80,14 @@ export default function AwardsPage() {
   const role = data?.me?.role as "ADULT" | "KID" | undefined;
   const isKidView = role === "KID";
 
+  React.useEffect(() => {
+    if (!isKidView || !data) return;
+    const target = Math.max(0, Math.min(100, Number(data.progressTowardNextStarPct ?? 0)));
+    setAnimatedNextStarPct(0);
+    const timer = window.setTimeout(() => setAnimatedNextStarPct(target), 90);
+    return () => window.clearTimeout(timer);
+  }, [isKidView, data?.progressTowardNextStarPct, data]);
+
   function exchangeStatusLabel(status: Exchange["status"]) {
     if (status === "PENDING") return "Waiting";
     if (status === "REJECTED") return "Not approved";
@@ -85,65 +95,67 @@ export default function AwardsPage() {
   }
 
   return (
-    <Stack spacing={2}>
-      <Box>
-        <Typography variant="h4">{isKidView ? "Stars & rewards" : "Awards"}</Typography>
-        <Typography color="text.secondary">
-          {isKidView
-            ? "Your score progress stacks up over time toward stars. Keep going!"
-            : "Stars build from weekly score progress and can carry over week to week."}
-        </Typography>
-      </Box>
+    <Container maxWidth="md" sx={{ pt: 0 }}>
+      <Stack spacing={2}>
+        <Box>
+          <Typography variant="h4">{isKidView ? "Rewards" : "Awards"}</Typography>
+          <Typography color="text.secondary">
+            {isKidView
+              ? "Your score progress stacks up over time toward stars. Keep going!"
+              : "Stars build from weekly score progress and can carry over week to week."}
+          </Typography>
+        </Box>
 
-      {err && <Alert severity="error">{err}</Alert>}
+        {err && <Alert severity="error">{err}</Alert>}
 
-      {data && role === "KID" && (
-        <Card variant="outlined">
-          <CardContent>
-            {(() => {
-              const nextStarPct = Math.max(0, Math.min(100, Number(data.progressTowardNextStarPct ?? 0)));
-              return (
-                <Stack
-                  direction={{ xs: "column", sm: "row" }}
-                  spacing={2}
-                  justifyContent="space-between"
-                  alignItems={{ xs: "flex-start", sm: "center" }}
-                >
-                  <Box>
-                    <Typography variant="h6">Your stars</Typography>
-                    <Typography color="text.secondary">Stars earned minus stars spent</Typography>
-                    <Typography sx={{ mt: 0.5 }}>{playfulStarProgressText(nextStarPct)}</Typography>
-                    <Tooltip title={`Next star: ${nextStarPct}%`} arrow>
-                      <Box sx={{ mt: 1, maxWidth: 320 }}>
-                        <LinearProgress
-                          variant="determinate"
-                          value={nextStarPct}
-                          sx={{
-                            height: 8,
-                            borderRadius: "999px",
-                            bgcolor: "rgba(0,0,0,0.1)",
-                            "& .MuiLinearProgress-bar": {
+        {data && role === "KID" && (
+          <Card variant="outlined">
+            <CardContent>
+              {(() => {
+                const nextStarPct = Math.max(0, Math.min(100, Number(data.progressTowardNextStarPct ?? 0)));
+                return (
+                  <Stack
+                    direction={{ xs: "column", sm: "row" }}
+                    spacing={2}
+                    justifyContent="space-between"
+                    alignItems={{ xs: "flex-start", sm: "center" }}
+                  >
+                    <Box>
+                      <Typography variant="h6">Your stars</Typography>
+                      <Typography color="text.secondary">Stars earned minus stars spent</Typography>
+                      <Typography sx={{ mt: 0.5 }}>{playfulStarProgressText(nextStarPct)}</Typography>
+                      <Tooltip title={`Next star: ${nextStarPct}%`} arrow>
+                        <Box sx={{ mt: 1, maxWidth: 320 }}>
+                          <LinearProgress
+                            variant="determinate"
+                            value={animatedNextStarPct}
+                            sx={{
+                              height: 7,
                               borderRadius: "999px",
-                              backgroundImage: "linear-gradient(90deg, #ffd66b 0%, #ffb343 100%)",
-                            },
-                          }}
-                        />
-                      </Box>
-                    </Tooltip>
-                  </Box>
+                              bgcolor: "rgba(0,0,0,0.08)",
+                              "& .MuiLinearProgress-bar": {
+                                borderRadius: "999px",
+                                transition: "transform 450ms ease",
+                                backgroundImage: "linear-gradient(90deg, #ffa83e 0%, #ffcf69 100%)",
+                              },
+                            }}
+                          />
+                        </Box>
+                      </Tooltip>
+                    </Box>
 
-                  <Stack direction="row" spacing={1} alignItems="center">
-                    <Chip label={`${data.balance} ⭐`} color="primary" />
-                    <Button variant="contained" onClick={() => setOpen(true)} disabled={data.balance <= 0}>
-                      Trade stars
-                    </Button>
+                    <Stack direction="row" spacing={1} alignItems="center">
+                      <Chip label={`${data.balance} ⭐`} color="primary" />
+                      <Button variant="contained" onClick={() => setOpen(true)} disabled={data.balance <= 0}>
+                        Trade stars
+                      </Button>
+                    </Stack>
                   </Stack>
-                </Stack>
-              );
-            })()}
-          </CardContent>
-        </Card>
-      )}
+                );
+              })()}
+            </CardContent>
+          </Card>
+        )}
 
       {data && role !== "KID" && (
         <Card variant="outlined">
@@ -240,34 +252,35 @@ export default function AwardsPage() {
         </Card>
       )}
 
-      <Dialog open={open} onClose={() => setOpen(false)} fullWidth maxWidth="sm">
-        <DialogTitle>Trade stars</DialogTitle>
-        <DialogContent>
-          <Stack spacing={2} sx={{ mt: 1 }}>
-            <TextField
-              label="How many stars?"
-              type="number"
-              value={stars}
-              onChange={(e) => setStars(Math.max(1, Number(e.target.value)))}
-              inputProps={{ min: 1 }}
-              fullWidth
-            />
-            <TextField
-              label="What do you want? (optional)"
-              value={note}
-              onChange={(e) => setNote(e.target.value)}
-              fullWidth
-            />
-            <Alert severity="info">
-              Your parent will approve the exchange and deduct stars from your balance.
-            </Alert>
-          </Stack>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setOpen(false)}>Cancel</Button>
-          <Button variant="contained" onClick={requestExchange}>Send request</Button>
-        </DialogActions>
-      </Dialog>
-    </Stack>
+        <Dialog open={open} onClose={() => setOpen(false)} fullWidth maxWidth="sm">
+          <DialogTitle>Trade stars</DialogTitle>
+          <DialogContent>
+            <Stack spacing={2} sx={{ mt: 1 }}>
+              <TextField
+                label="How many stars?"
+                type="number"
+                value={stars}
+                onChange={(e) => setStars(Math.max(1, Number(e.target.value)))}
+                inputProps={{ min: 1 }}
+                fullWidth
+              />
+              <TextField
+                label="What do you want? (optional)"
+                value={note}
+                onChange={(e) => setNote(e.target.value)}
+                fullWidth
+              />
+              <Alert severity="info">
+                Your parent will approve the exchange and deduct stars from your balance.
+              </Alert>
+            </Stack>
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setOpen(false)}>Cancel</Button>
+            <Button variant="contained" onClick={requestExchange}>Send request</Button>
+          </DialogActions>
+        </Dialog>
+      </Stack>
+    </Container>
   );
 }

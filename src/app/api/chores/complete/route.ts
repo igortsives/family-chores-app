@@ -1,18 +1,15 @@
 import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { syncAdultReminderNotificationsForFamily, syncKidReminderNotifications } from "@/lib/notifications";
+import { requireSessionUser } from "@/lib/requireUser";
 
 export async function POST(req: Request) {
-  const session = await getServerSession(authOptions);
-  const email = session?.user?.email;
-  if (!email) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-
-  const user = await prisma.user.findUnique({
-    where: { email },
-    select: { id: true, familyId: true, role: true },
-  });
-  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const auth = await requireSessionUser({ source: "api/chores/complete.POST" });
+  if ("status" in auth) return NextResponse.json({ error: auth.error }, { status: auth.status });
+  const { me: user } = auth;
+  if (user.role !== "KID") {
+    return NextResponse.json({ error: "Only kids can complete chores" }, { status: 403 });
+  }
 
   const body = await req.json().catch(() => ({}));
   const choreId: string | undefined = body?.choreId;
@@ -60,9 +57,8 @@ export async function POST(req: Request) {
     }
   }
 
-  // Create a completion (PENDING approval for kids; adults could auto-approve, but you said adults don't need awards—still keep approval logic simple)
-  const isKid = user.role === "KID";
-  const status = isKid ? "PENDING" : "APPROVED";
+  // Kids submit completions for parent approval.
+  const status = "PENDING";
 
   // If already completed today with PENDING/APPROVED, return current status.
   // If latest status is REJECTED, allow a new submission.
@@ -81,10 +77,14 @@ export async function POST(req: Request) {
       userId: user.id,
       status,
       pointsEarned: chore.points,
-      ...(status === "APPROVED" ? { approvedAt: new Date(), approvedById: user.id } : {}),
     },
     select: { id: true, status: true },
   });
+
+  await Promise.all([
+    syncKidReminderNotifications(user.id, user.familyId),
+    syncAdultReminderNotificationsForFamily(user.familyId),
+  ]);
 
   return NextResponse.json({ ok: true, completionId: completion.id, status: completion.status });
 }

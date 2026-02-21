@@ -4,7 +4,7 @@ import { requireSessionUser } from "@/lib/requireUser";
 import { addDays, startOfWeekMonday } from "@/lib/week";
 
 export async function GET() {
-  const auth = await requireSessionUser();
+  const auth = await requireSessionUser({ source: "api/kid-summary.GET" });
   if ("status" in auth) return NextResponse.json({ error: auth.error }, { status: auth.status });
   const { me } = auth;
 

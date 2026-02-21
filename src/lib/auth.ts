@@ -2,6 +2,7 @@ import type { NextAuthOptions } from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
 import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/prisma";
+import { authObsNow, logAuthObservability } from "@/lib/auth-observability";
 
 export const authOptions: NextAuthOptions = {
   session: { strategy: "jwt" },
@@ -15,11 +16,20 @@ export const authOptions: NextAuthOptions = {
         password: { label: "Password", type: "password" },
       },
       async authorize(credentials) {
+        const startedAt = authObsNow();
         const username = String(credentials?.username ?? "").trim().toLowerCase();
         const password = String(credentials?.password ?? "");
 
-        if (!username || !password) return null;
+        if (!username || !password) {
+          logAuthObservability("authorize.reject", {
+            reason: "missing_credentials",
+            username,
+            totalMs: authObsNow() - startedAt,
+          });
+          return null;
+        }
 
+        const userLookupStartedAt = authObsNow();
         const user = await prisma.user.findUnique({
           where: { username },
           select: {
@@ -34,14 +44,76 @@ export const authOptions: NextAuthOptions = {
             isHidden: true,
           },
         });
+        const userLookupMs = authObsNow() - userLookupStartedAt;
 
-        if (!user?.passwordHash) return null;
+        if (!user?.passwordHash) {
+          logAuthObservability("authorize.reject", {
+            reason: "user_not_found",
+            username,
+            userLookupMs,
+            totalMs: authObsNow() - startedAt,
+          });
+          return null;
+        }
 
-        if (!user.isActive) return null;
-        if (user.isHidden) return null;
+        if (!user.isActive) {
+          logAuthObservability("authorize.reject", {
+            reason: "inactive_user",
+            userId: user.id,
+            username,
+            userLookupMs,
+            totalMs: authObsNow() - startedAt,
+          });
+          return null;
+        }
+        if (user.isHidden) {
+          logAuthObservability("authorize.reject", {
+            reason: "hidden_user",
+            userId: user.id,
+            username,
+            userLookupMs,
+            totalMs: authObsNow() - startedAt,
+          });
+          return null;
+        }
 
+        const passwordCheckStartedAt = authObsNow();
         const ok = await bcrypt.compare(password, user.passwordHash);
-        if (!ok) return null;
+        const passwordCheckMs = authObsNow() - passwordCheckStartedAt;
+        if (!ok) {
+          logAuthObservability("authorize.reject", {
+            reason: "password_mismatch",
+            userId: user.id,
+            username,
+            userLookupMs,
+            passwordCheckMs,
+            totalMs: authObsNow() - startedAt,
+          });
+          return null;
+        }
+
+        logAuthObservability("authorize.ok", {
+          userId: user.id,
+          username,
+          role: user.role,
+          familyId: user.familyId,
+          userLookupMs,
+          passwordCheckMs,
+          totalMs: authObsNow() - startedAt,
+        });
+
+        try {
+          await prisma.user.update({
+            where: { id: user.id },
+            data: { lastLoginAt: new Date() },
+          });
+        } catch (error: unknown) {
+          logAuthObservability("authorize.last_login_update_failed", {
+            userId: user.id,
+            username,
+            message: error instanceof Error ? error.message : String(error),
+          });
+        }
 
         return {
           id: user.id,

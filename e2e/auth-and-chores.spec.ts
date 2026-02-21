@@ -10,12 +10,18 @@ import {
   resetE2ETestState,
 } from "./test-data";
 
-async function loginAs(page: Page, username: string, password: string) {
+async function loginAs(
+  page: Page,
+  username: string,
+  password: string,
+  role: "KID" | "ADULT" = "KID",
+) {
   await page.goto("/login");
   await page.getByLabel("Username").fill(username);
   await page.getByLabel("Password").fill(password);
   await page.getByRole("button", { name: "Sign in", exact: true }).click();
-  await expect(page).toHaveURL(/\/app(?:\/my-chores)?$/);
+  const expectedLanding = role === "ADULT" ? /\/app\/admin\/stats$/ : /\/app\/my-chores$/;
+  await expect(page).toHaveURL(expectedLanding);
 }
 
 async function targetChoreCard(page: Page): Promise<{ card: Locator; button: Locator }> {
@@ -36,8 +42,8 @@ test.describe("Kid and parent E2E flows", () => {
   });
 
   test("kid can clear unread notifications from the bell drawer", async ({ page }) => {
-    await loginAs(page, E2E_KID_USERNAME, E2E_KID_PASSWORD);
-    await expect(page.getByRole("heading", { name: "Today's chores" })).toBeVisible();
+    await loginAs(page, E2E_KID_USERNAME, E2E_KID_PASSWORD, "KID");
+    await expect(page.getByRole("heading", { name: "Chores" })).toBeVisible();
 
     await page.getByLabel("notifications").click();
     await expect(page.getByRole("heading", { name: "Messages" })).toBeVisible();
@@ -51,8 +57,8 @@ test.describe("Kid and parent E2E flows", () => {
   });
 
   test("kid sees weekly day strip behavior and can open leaderboard modal", async ({ page }) => {
-    await loginAs(page, E2E_KID_USERNAME, E2E_KID_PASSWORD);
-    await expect(page.getByRole("heading", { name: "Today's chores" })).toBeVisible();
+    await loginAs(page, E2E_KID_USERNAME, E2E_KID_PASSWORD, "KID");
+    await expect(page.getByRole("heading", { name: "Chores" })).toBeVisible();
 
     const dayStripCard = page.locator(".MuiCard-root").first();
     const dayButtons = dayStripCard.getByRole("button");
@@ -75,25 +81,62 @@ test.describe("Kid and parent E2E flows", () => {
     await expect(page.getByRole("heading", { name: "Leaderboard" })).toHaveCount(0);
   });
 
+  test("kid header icons use new labels and timeOfDay query updates subheading", async ({ page }) => {
+    await loginAs(page, E2E_KID_USERNAME, E2E_KID_PASSWORD, "KID");
+
+    await page.goto("/app/my-chores?timeOfDay=evening");
+    await expect(page.getByRole("heading", { name: "Chores" })).toBeVisible();
+    await expect(page.getByText("Evening hero mode: wrap up chores and earn your rewards!")).toBeVisible();
+
+    await page.getByRole("button", { name: "Rewards" }).click();
+    await expect(page.getByRole("heading", { name: "Rewards" })).toBeVisible();
+    await page.getByRole("button", { name: "Chores" }).click();
+    await expect(page.getByRole("heading", { name: "Chores" })).toBeVisible();
+  });
+
+  test("parent lands on family stats and uses header icons plus avatar menu", async ({ page }) => {
+    await loginAs(page, E2E_PARENT_USERNAME, E2E_PARENT_PASSWORD, "ADULT");
+    await expect(page.getByRole("heading", { name: "Family stats" })).toBeVisible();
+
+    await page.getByRole("button", { name: "Approvals" }).click();
+    await expect(page.getByRole("heading", { name: "Approvals" })).toBeVisible();
+
+    await page.getByRole("button", { name: "Star exchanges" }).click();
+    await expect(page.getByRole("heading", { name: "Star exchanges" })).toBeVisible();
+
+    await expect(page.getByRole("button", { name: "Settings" })).toHaveCount(0);
+
+    await page.getByRole("button", { name: "Open profile menu" }).click();
+    await expect(page.getByRole("menuitem", { name: "Settings" })).toBeVisible();
+    await expect(page.getByRole("menuitem", { name: "Log out" })).toBeVisible();
+    await page.getByRole("menuitem", { name: "Settings" }).click();
+    await expect(page.getByRole("heading", { name: "Settings" })).toBeVisible();
+  });
+
   test("kid submission appears in parent approvals and can be approved", async ({ browser }) => {
     const kidContext = await browser.newContext();
     const kidPage = await kidContext.newPage();
-    await loginAs(kidPage, E2E_KID_USERNAME, E2E_KID_PASSWORD);
-    await expect(kidPage.getByRole("heading", { name: "Today's chores" })).toBeVisible();
+    await loginAs(kidPage, E2E_KID_USERNAME, E2E_KID_PASSWORD, "KID");
+    await expect(kidPage.getByRole("heading", { name: "Chores" })).toBeVisible();
 
     const kidTask = await targetChoreCard(kidPage);
-    const initialLabel = (await kidTask.button.innerText()).trim();
+    const initialLabel = (await kidTask.button.getAttribute("aria-label")) ?? "";
     if (/not finished yet|undo/i.test(initialLabel)) {
       await kidTask.button.click();
-      await expect(kidTask.button).toHaveText(/I finished this|Mark done|Try again|Resubmit/);
+      await expect(kidTask.button).toHaveAttribute("aria-label", /I finished this|Mark done|Try again|Resubmit/i);
     }
 
     await kidTask.button.click();
-    await expect(kidTask.button).toHaveText(/Not finished yet|Undo/);
+    await expect(kidPage.getByRole("heading", { name: "All chores finished for today!" })).toBeVisible();
+    await expect(kidPage.getByText(new RegExp(`You finished ${E2E_CHORE_TITLE}`))).toBeVisible();
+    await expect(kidPage.getByText(/\+1 coins \(after parent approval\)/i)).toBeVisible();
+    await kidPage.getByRole("button", { name: /Done for today|Keep going/i }).click();
+    await expect(kidPage.getByRole("heading", { name: "All chores finished for today!" })).toHaveCount(0);
+    await expect(kidTask.button).toHaveAttribute("aria-label", /Not finished yet|Undo/i);
 
     const parentContext = await browser.newContext();
     const parentPage = await parentContext.newPage();
-    await loginAs(parentPage, E2E_PARENT_USERNAME, E2E_PARENT_PASSWORD);
+    await loginAs(parentPage, E2E_PARENT_USERNAME, E2E_PARENT_PASSWORD, "ADULT");
     await parentPage.goto("/app/admin/approvals");
     await expect(parentPage.getByRole("heading", { name: "Approvals" })).toBeVisible();
 
@@ -115,13 +158,14 @@ test.describe("Kid and parent E2E flows", () => {
   });
 
   test("parent can upload kid avatar, see it in chores assignees, and open family stats", async ({ page }) => {
-    await loginAs(page, E2E_PARENT_USERNAME, E2E_PARENT_PASSWORD);
+    await loginAs(page, E2E_PARENT_USERNAME, E2E_PARENT_PASSWORD, "ADULT");
 
     await page.goto("/app/admin/family");
     await expect(page.getByRole("heading", { name: "Family" })).toBeVisible();
 
     const kidRow = page.locator("[data-testid^='family-member-']").filter({ hasText: E2E_KID_NAME }).first();
     await expect(kidRow).toBeVisible();
+    await expect(kidRow.getByText(/Last login:/i)).toBeVisible();
     await kidRow.click();
 
     await expect(page.getByRole("dialog", { name: "Manage member" })).toBeVisible();
