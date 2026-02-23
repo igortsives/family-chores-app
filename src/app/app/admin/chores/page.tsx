@@ -563,6 +563,7 @@ export default function AdminChoresPage() {
                         label={c.active ? "Active" : "Inactive"}
                         sx={{
                           height: 18,
+                          width: 86,
                           flexShrink: 0,
                           "& .MuiChip-label": { px: 0.6, fontSize: "0.66rem" },
                           ...(c.active

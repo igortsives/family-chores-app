@@ -79,6 +79,8 @@ type HeaderMe = {
   avatarUrl: string | null;
 };
 
+const NOTIFICATION_STREAM_RECONNECT_MS = 15_000;
+
 const PROFILE_MENU_PAPER_PROPS = {
   sx: {
     mt: 0.5,
@@ -89,6 +91,49 @@ const PROFILE_MENU_PAPER_PROPS = {
     boxShadow: "0 10px 24px rgba(0,0,0,0.12)",
   },
 } as const;
+
+function sameNotificationItems(a: NotificationItem[], b: NotificationItem[]) {
+  if (a === b) return true;
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i += 1) {
+    if (
+      a[i].id !== b[i].id
+      || a[i].kind !== b[i].kind
+      || a[i].severity !== b[i].severity
+      || a[i].title !== b[i].title
+      || a[i].message !== b[i].message
+      || a[i].href !== b[i].href
+      || a[i].createdAt !== b[i].createdAt
+      || a[i].readAt !== b[i].readAt
+    ) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function sameHeaderMe(a: HeaderMe | null, b: HeaderMe | null) {
+  if (a === b) return true;
+  if (!a || !b) return false;
+  return (
+    a.id === b.id
+    && a.role === b.role
+    && a.username === b.username
+    && a.name === b.name
+    && a.email === b.email
+    && a.avatarUrl === b.avatarUrl
+  );
+}
+
+function sameKidSummary(a: KidSummary | null, b: KidSummary | null) {
+  if (a === b) return true;
+  if (!a || !b) return false;
+  return (
+    a.weeklyPoints === b.weeklyPoints
+    && a.totalStarsEarned === b.totalStarsEarned
+    && a.avatarUrl === b.avatarUrl
+  );
+}
 
 function HeaderGreeting({
   tooltipTitle,
@@ -316,6 +361,106 @@ function ProfileMenuIdentity({
   );
 }
 
+function NotificationBellButton({
+  onOpen,
+  externalUnreadCount,
+}: {
+  onOpen: () => void;
+  externalUnreadCount?: number | null;
+}) {
+  const [unreadCount, setUnreadCount] = React.useState(0);
+  const streamRef = React.useRef<EventSource | null>(null);
+  const reconnectTimerRef = React.useRef<number | null>(null);
+
+  const loadUnreadCount = React.useCallback(async () => {
+    try {
+      const res = await fetch("/api/notifications/unread", { cache: "no-store" });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) return;
+      const nextUnreadCount = typeof j?.unreadCount === "number" ? j.unreadCount : 0;
+      setUnreadCount((prev) => (prev === nextUnreadCount ? prev : nextUnreadCount));
+    } catch {
+      // Keep badge polling silent on transient failures.
+    }
+  }, []);
+
+  React.useEffect(() => {
+    if (typeof externalUnreadCount !== "number") return;
+    setUnreadCount((prev) => (prev === externalUnreadCount ? prev : externalUnreadCount));
+  }, [externalUnreadCount]);
+
+  React.useEffect(() => {
+    void loadUnreadCount();
+    const scheduleReconnect = () => {
+      if (reconnectTimerRef.current !== null) return;
+      reconnectTimerRef.current = window.setTimeout(() => {
+        reconnectTimerRef.current = null;
+        if (document.visibilityState !== "visible") return;
+        connectStream();
+      }, NOTIFICATION_STREAM_RECONNECT_MS);
+    };
+    const clearReconnect = () => {
+      if (reconnectTimerRef.current === null) return;
+      window.clearTimeout(reconnectTimerRef.current);
+      reconnectTimerRef.current = null;
+    };
+    const connectStream = () => {
+      if (streamRef.current) return;
+      const stream = new EventSource("/api/notifications/stream");
+      streamRef.current = stream;
+      clearReconnect();
+      stream.onmessage = (event) => {
+        try {
+          const payload = JSON.parse(event.data) as { unreadCount?: unknown };
+          const nextUnreadCount = payload.unreadCount;
+          if (typeof nextUnreadCount === "number") {
+            setUnreadCount((prev) => (prev === nextUnreadCount ? prev : nextUnreadCount));
+          }
+        } catch {
+          // Ignore malformed stream payloads.
+        }
+      };
+      stream.onerror = () => {
+        stream.close();
+        if (streamRef.current === stream) streamRef.current = null;
+        scheduleReconnect();
+      };
+    };
+
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        void loadUnreadCount();
+        connectStream();
+      }
+    };
+
+    connectStream();
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+      clearReconnect();
+      if (streamRef.current) {
+        streamRef.current.close();
+        streamRef.current = null;
+      }
+    };
+  }, [loadUnreadCount]);
+
+  return (
+    <IconButton aria-label="notifications" onClick={onOpen}>
+      <Badge
+        badgeContent={unreadCount}
+        color="error"
+        overlap="circular"
+        max={99}
+        invisible={unreadCount === 0}
+      >
+        <NotificationsRoundedIcon />
+      </Badge>
+    </IconButton>
+  );
+}
+
 export default function BrandShell({
   children,
   role,
@@ -340,9 +485,12 @@ export default function BrandShell({
   const [notifLoading, setNotifLoading] = React.useState(false);
   const [notifErr, setNotifErr] = React.useState<string | null>(null);
   const [notifItems, setNotifItems] = React.useState<NotificationItem[]>([]);
-  const [notifUnreadCount, setNotifUnreadCount] = React.useState(0);
   const [kidSummary, setKidSummary] = React.useState<KidSummary | null>(null);
   const [headerMe, setHeaderMe] = React.useState<HeaderMe | null>(null);
+  const drawerUnreadCount = React.useMemo(
+    () => notifItems.reduce((count, item) => count + (item.readAt ? 0 : 1), 0),
+    [notifItems],
+  );
 
   const nav: NavItem[] = React.useMemo(
     () =>
@@ -503,7 +651,6 @@ export default function BrandShell({
   }, []);
 
   const loadHeaderState = React.useCallback(async (withSpinner = true) => {
-    setNotifErr(null);
     if (withSpinner) setNotifLoading(true);
     try {
       const res = await fetch("/api/header-state", { cache: "no-store" });
@@ -515,9 +662,7 @@ export default function BrandShell({
 
       const notifications = j?.notifications ?? {};
       const items = Array.isArray(notifications?.items) ? (notifications.items as NotificationItem[]) : [];
-      const unreadCount = typeof notifications?.unreadCount === "number" ? notifications.unreadCount : 0;
-      setNotifItems(items);
-      setNotifUnreadCount(unreadCount);
+      setNotifItems((prev) => (sameNotificationItems(prev, items) ? prev : items));
       const me = j?.me ?? null;
       const normalizedMe = me && typeof me === "object"
         ? {
@@ -529,19 +674,21 @@ export default function BrandShell({
             avatarUrl: typeof me.avatarUrl === "string" ? me.avatarUrl : null,
           } as HeaderMe
         : null;
-      setHeaderMe(normalizedMe);
+      setHeaderMe((prev) => (sameHeaderMe(prev, normalizedMe) ? prev : normalizedMe));
 
       if (isKidView) {
         const summary = j?.kidSummary ?? null;
         const weeklyPoints = typeof summary?.weeklyPoints === "number" ? summary.weeklyPoints : 0;
         const totalStarsEarned = typeof summary?.totalStarsEarned === "number" ? summary.totalStarsEarned : 0;
-        const avatarUrl = typeof summary?.avatarUrl === "string" && summary.avatarUrl.trim().length > 0
+        const kidAvatarUrl = typeof summary?.avatarUrl === "string" && summary.avatarUrl.trim().length > 0
           ? summary.avatarUrl
           : null;
-        setKidSummary({ weeklyPoints, totalStarsEarned, avatarUrl });
+        const nextKidSummary = { weeklyPoints, totalStarsEarned, avatarUrl: kidAvatarUrl };
+        setKidSummary((prev) => (sameKidSummary(prev, nextKidSummary) ? prev : nextKidSummary));
       } else {
-        setKidSummary(null);
+        setKidSummary((prev) => (prev === null ? prev : null));
       }
+      setNotifErr((prev) => (prev === null ? prev : null));
     } catch (e: unknown) {
       const message = e instanceof Error ? e.message : String(e);
       setNotifErr(message);
@@ -552,10 +699,7 @@ export default function BrandShell({
 
   React.useEffect(() => {
     void loadHeaderState(true);
-    const timer = window.setInterval(() => {
-      void loadHeaderState(false);
-    }, 60_000);
-    return () => window.clearInterval(timer);
+    return undefined;
   }, [loadHeaderState]);
 
   function notificationColor(severity: NotificationItem["severity"]) {
@@ -581,8 +725,6 @@ export default function BrandShell({
       const msg = typeof j?.error === "string" ? j.error : `Failed (${res.status})`;
       throw new Error(msg);
     }
-    const unreadCount = typeof j?.unreadCount === "number" ? j.unreadCount : 0;
-    setNotifUnreadCount(unreadCount);
     setNotifItems((prev) =>
       prev.map((item) =>
         item.id === id && item.readAt === null ? { ...item, readAt: new Date().toISOString() } : item
@@ -601,8 +743,6 @@ export default function BrandShell({
       const msg = typeof j?.error === "string" ? j.error : `Failed (${res.status})`;
       throw new Error(msg);
     }
-    const unreadCount = typeof j?.unreadCount === "number" ? j.unreadCount : 0;
-    setNotifUnreadCount(unreadCount);
     setNotifItems((prev) => prev.filter((item) => item.id !== id));
   }
 
@@ -617,8 +757,6 @@ export default function BrandShell({
       const msg = typeof j?.error === "string" ? j.error : `Failed (${res.status})`;
       throw new Error(msg);
     }
-    const unreadCount = typeof j?.unreadCount === "number" ? j.unreadCount : 0;
-    setNotifUnreadCount(unreadCount);
     setNotifItems((prev) =>
       prev.map((item) => (item.readAt ? item : { ...item, readAt: new Date().toISOString() }))
     );
@@ -700,17 +838,10 @@ export default function BrandShell({
                 </Tooltip>
               </>
             )}
-            <IconButton aria-label="notifications" onClick={openNotifications}>
-              <Badge
-                badgeContent={notifUnreadCount}
-                color="error"
-                overlap="circular"
-                max={99}
-                invisible={notifUnreadCount === 0}
-              >
-                <NotificationsRoundedIcon />
-              </Badge>
-            </IconButton>
+            <NotificationBellButton
+              onOpen={openNotifications}
+              externalUnreadCount={notifOpen ? drawerUnreadCount : null}
+            />
             {!isKidView && (
               <ProfileAvatarTrigger
                 title="Open profile menu"
@@ -833,7 +964,7 @@ export default function BrandShell({
             <Stack direction="row" spacing={0.5} alignItems="center">
               <Button
                 size="small"
-                disabled={notifLoading || notifUnreadCount === 0}
+                disabled={notifLoading || drawerUnreadCount === 0}
                 onClick={async () => {
                   try {
                     await markAllNotificationItemsRead();
