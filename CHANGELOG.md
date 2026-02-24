@@ -32,6 +32,14 @@ All notable completed changes are documented in this file.
 ### Kid Chores UI
 - Added a border-integrated month/year legend to the weekly day strip.
 - Improved legend spacing and visual integration without increasing strip height.
+- Updated mobile week-strip interaction to show adjacent week while dragging and snap directionally on release:
+  - swipe right reveals/snaps to previous week
+  - swipe left reveals/snaps to next week (when available)
+- Added date-aware kid subheading behavior:
+  - today: motivational or all-done message
+  - past day (all approved): `Great work that day.`
+  - past day (some completed): `Nice effort that day.`
+  - past day (none completed): `Next time, you've got this.`
 
 ## 2026-02-20
 

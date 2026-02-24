@@ -61,7 +61,7 @@ test.describe("Kid and parent E2E flows", () => {
     await expect(page.getByRole("heading", { name: "Chores" })).toBeVisible();
 
     const dayStripCard = page.locator(".MuiCard-root").first();
-    const dayButtons = dayStripCard.getByRole("button");
+    const dayButtons = dayStripCard.locator("button:not([aria-label='Previous week']):not([aria-label='Next week'])");
     await expect(dayButtons).toHaveCount(7);
 
     const disabledCount = await dayButtons.evaluateAll((nodes) =>

@@ -35,7 +35,7 @@ import ChevronLeftRoundedIcon from "@mui/icons-material/ChevronLeftRounded";
 import ChevronRightRoundedIcon from "@mui/icons-material/ChevronRightRounded";
 import { addDays, startOfWeekMonday } from "@/lib/week";
 import {
-  areAllChoresDone,
+  kidDaySubheading,
   kidMotivationMessage,
   resolveTimeOfDayMode,
   willAllChoresBeDoneAfterSubmit,
@@ -118,42 +118,119 @@ export default function MyChoresPage() {
   const weekDays = React.useMemo(() => {
     return Array.from({ length: 7 }, (_, idx) => addDays(selectedWeekStart, idx));
   }, [selectedWeekStart]);
-  const goToPreviousWeek = React.useCallback(() => {
-    setSelectedDate((prev) => addDays(prev, -7));
-  }, []);
-  const goToNextWeek = React.useCallback(() => {
-    if (!canGoToNextWeek) return;
+  const nextWeekDays = React.useMemo(() => {
+    return Array.from({ length: 7 }, (_, idx) => addDays(selectedWeekStart, 7 + idx));
+  }, [selectedWeekStart]);
+  const previousWeekDays = React.useMemo(() => {
+    return Array.from({ length: 7 }, (_, idx) => addDays(selectedWeekStart, -7 + idx));
+  }, [selectedWeekStart]);
+  const shiftWeek = React.useCallback((dir: "prev" | "next") => {
     setSelectedDate((prev) => {
+      if (dir === "prev") return addDays(prev, -7);
       const next = addDays(prev, 7);
       return next.getTime() > todayDate.getTime() ? todayDate : next;
     });
-  }, [canGoToNextWeek, todayDate]);
+  }, [todayDate]);
+  const goToPreviousWeek = React.useCallback(() => {
+    shiftWeek("prev");
+  }, [shiftWeek]);
+  const goToNextWeek = React.useCallback(() => {
+    if (!canGoToNextWeek) return;
+    shiftWeek("next");
+  }, [canGoToNextWeek, shiftWeek]);
   const touchStartXRef = React.useRef<number | null>(null);
   const touchStartYRef = React.useRef<number | null>(null);
+  const touchAxisRef = React.useRef<"x" | "y" | null>(null);
+  const [mobileDragX, setMobileDragX] = React.useState(0);
+  const [mobileTransitionMs, setMobileTransitionMs] = React.useState(0);
+  const [mobileSnapDirection, setMobileSnapDirection] = React.useState<"prev" | "next" | null>(null);
+  const resetMobileDrag = React.useCallback(() => {
+    setMobileSnapDirection(null);
+    setMobileTransitionMs(0);
+    setMobileDragX(0);
+  }, []);
+  React.useEffect(() => {
+    if (!isMobileDevice) {
+      resetMobileDrag();
+    }
+  }, [isMobileDevice, resetMobileDrag]);
   const handleWeekStripTouchStart = React.useCallback((event: React.TouchEvent<HTMLDivElement>) => {
-    if (!isMobileDevice) return;
+    if (!isMobileDevice || mobileSnapDirection) return;
     const touch = event.touches[0];
     touchStartXRef.current = touch.clientX;
     touchStartYRef.current = touch.clientY;
-  }, [isMobileDevice]);
+    touchAxisRef.current = null;
+    setMobileTransitionMs(0);
+  }, [isMobileDevice, mobileSnapDirection]);
+  const handleWeekStripTouchMove = React.useCallback((event: React.TouchEvent<HTMLDivElement>) => {
+    if (!isMobileDevice || mobileSnapDirection) return;
+    const startX = touchStartXRef.current;
+    const startY = touchStartYRef.current;
+    if (startX == null || startY == null) return;
+
+    const touch = event.touches[0];
+    const deltaX = touch.clientX - startX;
+    const deltaY = touch.clientY - startY;
+
+    if (!touchAxisRef.current) {
+      if (Math.abs(deltaX) < 8 && Math.abs(deltaY) < 8) return;
+      touchAxisRef.current = Math.abs(deltaX) > Math.abs(deltaY) ? "x" : "y";
+    }
+
+    if (touchAxisRef.current !== "x") return;
+    event.preventDefault();
+    let dragX = deltaX;
+    if (deltaX < 0 && !canGoToNextWeek) dragX = deltaX * 0.28;
+    const clamped = Math.max(-180, Math.min(180, dragX));
+    setMobileDragX(clamped);
+  }, [canGoToNextWeek, isMobileDevice, mobileSnapDirection]);
   const handleWeekStripTouchEnd = React.useCallback((event: React.TouchEvent<HTMLDivElement>) => {
-    if (!isMobileDevice) return;
+    if (!isMobileDevice || mobileSnapDirection) return;
     const startX = touchStartXRef.current;
     const startY = touchStartYRef.current;
     touchStartXRef.current = null;
     touchStartYRef.current = null;
+    const axis = touchAxisRef.current;
+    touchAxisRef.current = null;
     if (startX == null || startY == null) return;
-    const endTouch = event.changedTouches[0];
-    const deltaX = endTouch.clientX - startX;
-    const deltaY = endTouch.clientY - startY;
-    if (Math.abs(deltaX) < 44) return;
-    if (Math.abs(deltaX) < Math.abs(deltaY)) return;
-    if (deltaX > 0) {
-      goToPreviousWeek();
+    if (axis !== "x") {
+      setMobileTransitionMs(180);
+      setMobileDragX(0);
       return;
     }
-    goToNextWeek();
-  }, [goToNextWeek, goToPreviousWeek, isMobileDevice]);
+    const endTouch = event.changedTouches[0];
+    const deltaX = endTouch.clientX - startX;
+    const thresholdPx = 56;
+    if (deltaX <= -thresholdPx && canGoToNextWeek) {
+      setMobileSnapDirection("next");
+      setMobileTransitionMs(220);
+      setMobileDragX(0);
+      return;
+    }
+    if (deltaX >= thresholdPx) {
+      setMobileSnapDirection("prev");
+      setMobileTransitionMs(220);
+      setMobileDragX(0);
+      return;
+    }
+    setMobileTransitionMs(180);
+    setMobileDragX(0);
+  }, [canGoToNextWeek, isMobileDevice, mobileSnapDirection]);
+  const handleWeekStripTouchCancel = React.useCallback(() => {
+    touchStartXRef.current = null;
+    touchStartYRef.current = null;
+    touchAxisRef.current = null;
+    setMobileTransitionMs(180);
+    setMobileDragX(0);
+  }, []);
+  const handleMobileWeekTrackTransitionEnd = React.useCallback(() => {
+    if (mobileSnapDirection) {
+      shiftWeek(mobileSnapDirection);
+      resetMobileDrag();
+      return;
+    }
+    setMobileTransitionMs(0);
+  }, [mobileSnapDirection, resetMobileDrag, shiftWeek]);
   const dayNameFmt = React.useMemo(
     () => new Intl.DateTimeFormat(undefined, { weekday: "short" }),
     [],
@@ -166,6 +243,17 @@ export default function MyChoresPage() {
     () => `${monthNameFmt.format(selectedDate)} ${selectedDate.getFullYear()}`,
     [monthNameFmt, selectedDate],
   );
+  const mobileBasePercent = mobileSnapDirection === "prev"
+    ? "0%"
+    : mobileSnapDirection === "next"
+      ? "-66.6667%"
+      : "-33.3333%";
+  const mobileTrackTransform = mobileSnapDirection
+    ? `translate3d(${mobileBasePercent}, 0, 0)`
+    : `translate3d(calc(-33.3333% + ${mobileDragX}px), 0, 0)`;
+  const mobileTrackTransition = mobileTransitionMs
+    ? `transform ${mobileTransitionMs}ms cubic-bezier(0.22, 0.61, 0.36, 1)`
+    : "none";
   const timePreview = searchParams.get("timeOfDay");
   const forcedMode = timePreview === "morning" || timePreview === "afternoon" || timePreview === "evening"
     ? timePreview
@@ -232,10 +320,24 @@ export default function MyChoresPage() {
     ],
     [],
   );
-  const allChoresDone = React.useMemo(() => areAllChoresDone(rows, isKidView), [isKidView, rows]);
-  const kidSubheading = allChoresDone
-    ? "Awesome job! You finished all your chores."
-    : kidMotivation;
+  const kidSubheading = React.useMemo(() => {
+    if (!isKidView) return "Mark chores done. If you're a kid, a parent must approve.";
+    return kidDaySubheading(rows, isSelectedToday, kidMotivation);
+  }, [isKidView, isSelectedToday, kidMotivation, rows]);
+  const dayCellSx = {
+    minWidth: { xs: 40, sm: 50 },
+    width: { xs: 40, sm: 50 },
+    height: { xs: 40, sm: 50 },
+    borderRadius: "999px",
+    flexShrink: 0,
+    p: 0,
+    fontWeight: 800,
+    fontSize: { xs: "0.95rem", sm: "1rem" },
+    lineHeight: 1,
+    textTransform: "none",
+    borderWidth: 2,
+    borderStyle: "solid",
+  } as const;
 
   const load = React.useCallback(async () => {
     setErr(null);
@@ -458,75 +560,172 @@ export default function MyChoresPage() {
                 )}
                 <Box
                   onTouchStart={handleWeekStripTouchStart}
+                  onTouchMove={handleWeekStripTouchMove}
                   onTouchEnd={handleWeekStripTouchEnd}
-                  sx={{ display: "flex", justifyContent: "center", overflowX: "hidden", pb: 0.25, flex: 1 }}
+                  onTouchCancel={handleWeekStripTouchCancel}
+                  sx={{
+                    display: "flex",
+                    justifyContent: "center",
+                    overflowX: "hidden",
+                    pb: 0.25,
+                    px: { xs: 0.25, sm: 0.5 },
+                    flex: 1,
+                    touchAction: "pan-y",
+                  }}
                 >
-                  <Box sx={{ display: "flex", gap: { xs: 0.75, sm: 1.25 }, width: "max-content", mx: "auto", px: 0.5 }}>
-                  {weekDays.map((day) => {
-                    const dayKey = toDateKey(day);
-                    const isSelected = dayKey === selectedDateKey;
-                    const isToday = dayKey === todayDateKey;
-                    const isFuture = dayKey > todayDateKey;
-                    return (
-                      <Stack key={dayKey} spacing={0.5} alignItems="center">
-                        <Typography
-                          variant="caption"
-                          sx={{
-                            fontWeight: 800,
-                            lineHeight: 1,
-                            color: isSelected ? "#a05a00" : isToday ? "#0b6aa2" : "text.secondary",
-                          }}
-                        >
-                            {dayNameFmt.format(day)}
-                        </Typography>
-                        <Button
-                          variant="outlined"
-                          color="inherit"
-                          disabled={isFuture}
-                          onClick={() => {
-                            if (isFuture) return;
-                            setSelectedDate(day);
-                          }}
-                          sx={{
-                            minWidth: { xs: 44, sm: 50 },
-                            width: { xs: 44, sm: 50 },
-                            height: { xs: 44, sm: 50 },
-                            borderRadius: "999px",
-                            flexShrink: 0,
-                            p: 0,
-                            fontWeight: 800,
-                            fontSize: { xs: "0.95rem", sm: "1rem" },
-                            lineHeight: 1,
-                            textTransform: "none",
-                            borderWidth: 2,
-                            borderStyle: "solid",
-                            bgcolor: isSelected ? "#ffe08a" : isToday ? "#e8f7ff" : isFuture ? "#f7f7f8" : "#eef5ff",
-                            borderColor: isSelected ? "#f4b400" : isToday ? "#4db2ff" : isFuture ? "#e2e4e8" : "#c8daf7",
-                            color: isSelected ? "#4a3000" : isToday ? "#0d4870" : "text.primary",
-                            boxShadow: isSelected
-                              ? "0 4px 10px rgba(244,180,0,0.25)"
-                              : isToday
-                                ? "0 0 0 3px rgba(77,178,255,0.18)"
-                                : "none",
-                            "&:hover": isFuture
-                              ? undefined
-                              : {
-                                  borderColor: isSelected ? "#d8a200" : isToday ? "#2398e4" : "#98b9ef",
-                                  bgcolor: isSelected ? "#ffd76a" : isToday ? "#d8f0ff" : "#e2eeff",
-                                  transform: "translateY(-1px)",
+                  {isMobileDevice ? (
+                    <Box sx={{ width: "100%", overflow: "hidden" }}>
+                      <Box
+                        onTransitionEnd={handleMobileWeekTrackTransitionEnd}
+                        sx={{
+                          width: "300%",
+                          display: "grid",
+                          gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+                          transform: mobileTrackTransform,
+                          transition: mobileTrackTransition,
+                          px: 0,
+                        }}
+                      >
+                        {[previousWeekDays, weekDays, nextWeekDays].map((days, panelIndex) => (
+                          <Box key={panelIndex} sx={{ px: 0.5 }}>
+                            <Box
+                              sx={{
+                                display: "grid",
+                                gridTemplateColumns: "repeat(7, minmax(0, 1fr))",
+                                gap: 0.5,
+                              }}
+                            >
+                              {days.map((day) => {
+                                const dayKey = toDateKey(day);
+                                const isSelected = dayKey === selectedDateKey;
+                                const isToday = dayKey === todayDateKey;
+                                const isFuture = dayKey > todayDateKey;
+                                const isCurrentPanel = panelIndex === 1;
+                                return (
+                                  <Stack key={`${panelIndex}-${dayKey}`} spacing={0.5} alignItems="center">
+                                    <Typography
+                                      variant="caption"
+                                      sx={{
+                                        fontWeight: 800,
+                                        lineHeight: 1,
+                                        color: isSelected ? "#a05a00" : isToday ? "#0b6aa2" : "text.secondary",
+                                      }}
+                                    >
+                                      {dayNameFmt.format(day)}
+                                    </Typography>
+                                    {isCurrentPanel ? (
+                                      <Button
+                                        variant="outlined"
+                                        color="inherit"
+                                        disabled={isFuture}
+                                        onClick={() => {
+                                          if (isFuture) return;
+                                          setSelectedDate(day);
+                                        }}
+                                        sx={{
+                                          ...dayCellSx,
+                                          bgcolor: isSelected ? "#ffe08a" : isToday ? "#e8f7ff" : isFuture ? "#f7f7f8" : "#eef5ff",
+                                          borderColor: isSelected ? "#f4b400" : isToday ? "#4db2ff" : isFuture ? "#e2e4e8" : "#c8daf7",
+                                          color: isSelected ? "#4a3000" : isToday ? "#0d4870" : "text.primary",
+                                          boxShadow: isSelected
+                                            ? "0 4px 10px rgba(244,180,0,0.25)"
+                                            : isToday
+                                              ? "0 0 0 3px rgba(77,178,255,0.18)"
+                                              : "none",
+                                          "&.Mui-disabled": {
+                                            opacity: 0.78,
+                                            color: "text.disabled",
+                                          },
+                                        }}
+                                      >
+                                        {day.getDate()}
+                                      </Button>
+                                    ) : (
+                                      <Box
+                                        sx={{
+                                          ...dayCellSx,
+                                          display: "inline-flex",
+                                          alignItems: "center",
+                                          justifyContent: "center",
+                                          bgcolor: isSelected ? "#ffe08a" : isToday ? "#e8f7ff" : isFuture ? "#f7f7f8" : "#eef5ff",
+                                          borderColor: isSelected ? "#f4b400" : isToday ? "#4db2ff" : isFuture ? "#e2e4e8" : "#c8daf7",
+                                          color: isSelected ? "#4a3000" : isToday ? "#0d4870" : "text.primary",
+                                          boxShadow: isSelected
+                                            ? "0 4px 10px rgba(244,180,0,0.25)"
+                                            : isToday
+                                              ? "0 0 0 3px rgba(77,178,255,0.18)"
+                                              : "none",
+                                          opacity: 0.92,
+                                        }}
+                                      >
+                                        {day.getDate()}
+                                      </Box>
+                                    )}
+                                  </Stack>
+                                );
+                              })}
+                            </Box>
+                          </Box>
+                        ))}
+                      </Box>
+                    </Box>
+                  ) : (
+                    <Box sx={{ display: "flex", gap: { xs: 0.75, sm: 1.25 }, width: "max-content", mx: "auto", px: 0.5 }}>
+                      {weekDays.map((day) => {
+                        const dayKey = toDateKey(day);
+                        const isSelected = dayKey === selectedDateKey;
+                        const isToday = dayKey === todayDateKey;
+                        const isFuture = dayKey > todayDateKey;
+                        return (
+                          <Stack key={dayKey} spacing={0.5} alignItems="center">
+                            <Typography
+                              variant="caption"
+                              sx={{
+                                fontWeight: 800,
+                                lineHeight: 1,
+                                color: isSelected ? "#a05a00" : isToday ? "#0b6aa2" : "text.secondary",
+                              }}
+                            >
+                              {dayNameFmt.format(day)}
+                            </Typography>
+                            <Button
+                              variant="outlined"
+                              color="inherit"
+                              disabled={isFuture}
+                              onClick={() => {
+                                if (isFuture) return;
+                                setSelectedDate(day);
+                              }}
+                              sx={{
+                                ...dayCellSx,
+                                bgcolor: isSelected ? "#ffe08a" : isToday ? "#e8f7ff" : isFuture ? "#f7f7f8" : "#eef5ff",
+                                borderColor: isSelected ? "#f4b400" : isToday ? "#4db2ff" : isFuture ? "#e2e4e8" : "#c8daf7",
+                                color: isSelected ? "#4a3000" : isToday ? "#0d4870" : "text.primary",
+                                boxShadow: isSelected
+                                  ? "0 4px 10px rgba(244,180,0,0.25)"
+                                  : isToday
+                                    ? "0 0 0 3px rgba(77,178,255,0.18)"
+                                    : "none",
+                                "&:hover": isFuture
+                                  ? undefined
+                                  : {
+                                      borderColor: isSelected ? "#d8a200" : isToday ? "#2398e4" : "#98b9ef",
+                                      bgcolor: isSelected ? "#ffd76a" : isToday ? "#d8f0ff" : "#e2eeff",
+                                      transform: "translateY(-1px)",
+                                    },
+                                "&.Mui-disabled": {
+                                  opacity: 0.78,
+                                  color: "text.disabled",
                                 },
-                            "&.Mui-disabled": {
-                              opacity: 0.78,
-                              color: "text.disabled",
-                            },
-                          }}
-                        >
-                          {day.getDate()}
-                        </Button>
-                      </Stack>
-                    );
-                  })}
-                  </Box>
+                              }}
+                            >
+                              {day.getDate()}
+                            </Button>
+                          </Stack>
+                        );
+                      })}
+                    </Box>
+                  )}
                 </Box>
                 {!isMobileDevice && (
                   <IconButton

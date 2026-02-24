@@ -7,6 +7,10 @@ type StatusRow = {
   todayStatus: string;
 };
 
+function isCompletedStatus(status: string) {
+  return status === "APPROVED" || status === "PENDING" || status === "REJECTED";
+}
+
 export function resolveTimeOfDayMode(
   forcedMode: string | null | undefined,
   now: Date = new Date(),
@@ -43,4 +47,30 @@ export function willAllChoresBeDoneAfterSubmit(
     row.choreId === completedChoreId ? { ...row, todayStatus: "PENDING" } : row
   );
   return projectedRows.every((row) => row.todayStatus === "PENDING" || row.todayStatus === "APPROVED");
+}
+
+export function kidDaySubheading(
+  rows: ReadonlyArray<Pick<StatusRow, "todayStatus">> | null | undefined,
+  isSelectedToday: boolean,
+  motivationMessage: string,
+): string {
+  if (!rows || rows.length === 0) return motivationMessage;
+
+  if (isSelectedToday) {
+    return areAllChoresDone(rows, true)
+      ? "Awesome job! You finished all your chores."
+      : motivationMessage;
+  }
+
+  const allApproved = rows.every((row) => row.todayStatus === "APPROVED");
+  if (allApproved) {
+    return "Great work that day.";
+  }
+
+  const someCompleted = rows.some((row) => isCompletedStatus(row.todayStatus));
+  if (someCompleted) {
+    return "Nice effort that day.";
+  }
+
+  return "Next time, you've got this.";
 }

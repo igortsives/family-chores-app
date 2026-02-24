@@ -24,8 +24,10 @@ Kids complete chores, earn coins, build star progress, and exchange earned stars
 
 **Kids**
 - View assigned chores by day
+- Swipe between weeks on mobile day strip (with snap behavior)
 - Mark chores as completed
 - Undo a completion while it is still pending parent approval
+- See contextual kid-friendly subheading messages for today vs past days
 - See rejection reasons from parents
 - View messages grouped into kid-friendly tabs (Recent / Older)
 - Track leaderboard status and weekly progress

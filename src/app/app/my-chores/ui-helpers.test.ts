@@ -1,5 +1,6 @@
 import {
   areAllChoresDone,
+  kidDaySubheading,
   kidMotivationMessage,
   resolveTimeOfDayMode,
   willAllChoresBeDoneAfterSubmit,
@@ -66,6 +67,60 @@ describe("my-chores ui helpers", () => {
         { choreId: "b", todayStatus: "NOT_DONE" },
       ];
       expect(willAllChoresBeDoneAfterSubmit(rows, "a")).toBe(false);
+    });
+  });
+
+  describe("kidDaySubheading", () => {
+    const motivation = "Keep going!";
+
+    it("uses motivational text for today when chores are not fully done", () => {
+      expect(
+        kidDaySubheading(
+          [{ todayStatus: "NOT_DONE" }, { todayStatus: "PENDING" }],
+          true,
+          motivation,
+        ),
+      ).toBe(motivation);
+    });
+
+    it("uses all-done text for today when all chores are done", () => {
+      expect(
+        kidDaySubheading(
+          [{ todayStatus: "PENDING" }, { todayStatus: "APPROVED" }],
+          true,
+          motivation,
+        ),
+      ).toMatch(/finished all your chores/i);
+    });
+
+    it("uses approved-all text for past day when all chores were approved", () => {
+      expect(
+        kidDaySubheading(
+          [{ todayStatus: "APPROVED" }, { todayStatus: "APPROVED" }],
+          false,
+          motivation,
+        ),
+      ).toBe("Great work that day.");
+    });
+
+    it("uses partial text for past day when only some chores were completed", () => {
+      expect(
+        kidDaySubheading(
+          [{ todayStatus: "APPROVED" }, { todayStatus: "NOT_DONE" }],
+          false,
+          motivation,
+        ),
+      ).toBe("Nice effort that day.");
+    });
+
+    it("uses positive text for past day when no chores were completed", () => {
+      expect(
+        kidDaySubheading(
+          [{ todayStatus: "NOT_DONE" }, { todayStatus: "NOT_DONE" }],
+          false,
+          motivation,
+        ),
+      ).toBe("Next time, you've got this.");
     });
   });
 });
