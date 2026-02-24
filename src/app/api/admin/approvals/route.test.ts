@@ -15,12 +15,18 @@ vi.mock("@/lib/prisma", () => ({
       update: vi.fn(),
       aggregate: vi.fn(),
     },
+    choreInstance: {
+      findMany: vi.fn(),
+    },
     award: {
       findMany: vi.fn(),
     },
     userAward: {
       findMany: vi.fn(),
       createMany: vi.fn(),
+    },
+    notification: {
+      findMany: vi.fn(),
     },
   },
 }));
@@ -34,21 +40,25 @@ vi.mock("@/lib/notifications", () => ({
 import { requireAdult } from "@/lib/requireUser";
 import { prisma } from "@/lib/prisma";
 import { createNotification } from "@/lib/notifications";
-import { GET, POST } from "@/app/api/admin/approvals/route";
+import { GET, PATCH, POST } from "@/app/api/admin/approvals/route";
 
 const requireAdultMock = vi.mocked(requireAdult);
 const findPendingMock = vi.mocked(prisma.choreCompletion.findMany as any);
 const findCompletionMock = vi.mocked(prisma.choreCompletion.findFirst as any);
 const updateCompletionMock = vi.mocked(prisma.choreCompletion.update as any);
 const aggregateCompletionsMock = vi.mocked(prisma.choreCompletion.aggregate as any);
+const findDueInstancesMock = vi.mocked(prisma.choreInstance.findMany as any);
 const findAwardsMock = vi.mocked(prisma.award.findMany as any);
 const findUserAwardsMock = vi.mocked(prisma.userAward.findMany as any);
 const createUserAwardsMock = vi.mocked(prisma.userAward.createMany as any);
+const findNotificationsMock = vi.mocked(prisma.notification.findMany as any);
 const createNotificationMock = vi.mocked(createNotification);
 
 describe("admin approvals", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    findNotificationsMock.mockResolvedValue([]);
+    findDueInstancesMock.mockResolvedValue([]);
   });
 
   it("GET returns 401 when auth guard rejects", async () => {
@@ -80,7 +90,7 @@ describe("admin approvals", () => {
     const res = await POST(req);
 
     expect(res.status).toBe(400);
-    await expect(res.json()).resolves.toEqual({ error: "Rejection reason is required" });
+    await expect(res.json()).resolves.toEqual({ error: "Comment is required when rejecting" });
     expect(findCompletionMock).not.toHaveBeenCalled();
   });
 
@@ -131,6 +141,85 @@ describe("admin approvals", () => {
     );
   });
 
+  it("POST APPROVE stores optional parent comment and includes it in notification", async () => {
+    requireAdultMock.mockResolvedValue({ me: { id: "adult-1", familyId: "fam-1", role: "ADULT" } } as any);
+
+    findCompletionMock.mockResolvedValue({ id: "c1", userId: "kid-1", user: { role: "KID" } });
+    updateCompletionMock.mockResolvedValue({ id: "c1" });
+    aggregateCompletionsMock.mockResolvedValue({ _sum: { pointsEarned: 4 } });
+    findAwardsMock.mockResolvedValue([]);
+    findUserAwardsMock.mockResolvedValue([]);
+
+    const req = new Request("http://localhost/api/admin/approvals", {
+      method: "POST",
+      body: JSON.stringify({ completionId: "c1", action: "APPROVE", parentComment: "Great teamwork!" }),
+      headers: { "Content-Type": "application/json" },
+    });
+
+    const res = await POST(req);
+
+    expect(res.status).toBe(200);
+    await expect(res.json()).resolves.toEqual({ ok: true, status: "APPROVED" });
+    expect(updateCompletionMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "c1" },
+        data: expect.objectContaining({
+          status: "APPROVED",
+          rejectionReason: "Great teamwork!",
+        }),
+      }),
+    );
+    expect(createNotificationMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        userId: "kid-1",
+        sourceKey: "completion-c1-approved",
+        message: expect.stringContaining("Parent note: Great teamwork!"),
+      }),
+    );
+  });
+
+  it("POST APPROVE can retroactively approve a rejected completion", async () => {
+    requireAdultMock.mockResolvedValue({ me: { id: "adult-1", familyId: "fam-1", role: "ADULT" } } as any);
+
+    findCompletionMock.mockResolvedValue({ id: "c1", userId: "kid-1", status: "REJECTED", user: { role: "KID" } });
+    updateCompletionMock.mockResolvedValue({ id: "c1" });
+    aggregateCompletionsMock.mockResolvedValue({ _sum: { pointsEarned: 8 } });
+    findAwardsMock.mockResolvedValue([]);
+    findUserAwardsMock.mockResolvedValue([]);
+
+    const req = new Request("http://localhost/api/admin/approvals", {
+      method: "POST",
+      body: JSON.stringify({
+        completionId: "c1",
+        action: "APPROVE",
+        parentComment: "Thanks for fixing this yesterday.",
+      }),
+      headers: { "Content-Type": "application/json" },
+    });
+
+    const res = await POST(req);
+
+    expect(res.status).toBe(200);
+    await expect(res.json()).resolves.toEqual({ ok: true, status: "APPROVED" });
+    expect(findCompletionMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          id: "c1",
+          status: { in: ["PENDING", "REJECTED"] },
+        }),
+      }),
+    );
+    expect(updateCompletionMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "c1" },
+        data: expect.objectContaining({
+          status: "APPROVED",
+          rejectionReason: "Thanks for fixing this yesterday.",
+        }),
+      }),
+    );
+  });
+
   it("POST REJECT stores reason and sends error notification", async () => {
     requireAdultMock.mockResolvedValue({ me: { id: "adult-1", familyId: "fam-1", role: "ADULT" } } as any);
 
@@ -165,6 +254,32 @@ describe("admin approvals", () => {
     );
   });
 
+  it("POST REJECT accepts parentComment field", async () => {
+    requireAdultMock.mockResolvedValue({ me: { id: "adult-1", familyId: "fam-1", role: "ADULT" } } as any);
+    findCompletionMock.mockResolvedValue({ id: "c1", userId: "kid-1", user: { role: "KID" } });
+    updateCompletionMock.mockResolvedValue({ id: "c1" });
+
+    const req = new Request("http://localhost/api/admin/approvals", {
+      method: "POST",
+      body: JSON.stringify({ completionId: "c1", action: "REJECT", parentComment: "Please rinse better." }),
+      headers: { "Content-Type": "application/json" },
+    });
+
+    const res = await POST(req);
+
+    expect(res.status).toBe(200);
+    await expect(res.json()).resolves.toEqual({ ok: true, status: "REJECTED" });
+    expect(updateCompletionMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "c1" },
+        data: expect.objectContaining({
+          status: "REJECTED",
+          rejectionReason: "Please rinse better.",
+        }),
+      }),
+    );
+  });
+
   it("POST returns 401 when auth guard rejects", async () => {
     requireAdultMock.mockResolvedValue({ status: 401, error: "Unauthorized" } as any);
 
@@ -179,18 +294,153 @@ describe("admin approvals", () => {
     await expect(res.json()).resolves.toEqual({ error: "Unauthorized" });
   });
 
+  it("PATCH returns 401 when auth guard rejects", async () => {
+    requireAdultMock.mockResolvedValue({ status: 401, error: "Unauthorized" } as any);
+
+    const req = new Request("http://localhost/api/admin/approvals", {
+      method: "PATCH",
+      body: JSON.stringify({ completionId: "c1", parentComment: "Nice effort!" }),
+      headers: { "Content-Type": "application/json" },
+    });
+
+    const res = await PATCH(req);
+    expect(res.status).toBe(401);
+    await expect(res.json()).resolves.toEqual({ error: "Unauthorized" });
+  });
+
+  it("PATCH updates parent comment in lifecycle history", async () => {
+    requireAdultMock.mockResolvedValue({ me: { id: "adult-1", familyId: "fam-1", role: "ADULT" } } as any);
+    findCompletionMock.mockResolvedValue({ id: "c1", status: "APPROVED" });
+    updateCompletionMock.mockResolvedValue({ id: "c1", rejectionReason: "Great follow-through." });
+
+    const req = new Request("http://localhost/api/admin/approvals", {
+      method: "PATCH",
+      body: JSON.stringify({ completionId: "c1", parentComment: "Great follow-through." }),
+      headers: { "Content-Type": "application/json" },
+    });
+
+    const res = await PATCH(req);
+    expect(res.status).toBe(200);
+    await expect(res.json()).resolves.toEqual({
+      ok: true,
+      id: "c1",
+      parentComment: "Great follow-through.",
+    });
+    expect(updateCompletionMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "c1" },
+        data: { rejectionReason: "Great follow-through." },
+      }),
+    );
+  });
+
+  it("PATCH clears parent comment when empty text is provided", async () => {
+    requireAdultMock.mockResolvedValue({ me: { id: "adult-1", familyId: "fam-1", role: "ADULT" } } as any);
+    findCompletionMock.mockResolvedValue({ id: "c1", status: "REJECTED" });
+    updateCompletionMock.mockResolvedValue({ id: "c1", rejectionReason: null });
+
+    const req = new Request("http://localhost/api/admin/approvals", {
+      method: "PATCH",
+      body: JSON.stringify({ completionId: "c1", parentComment: "   " }),
+      headers: { "Content-Type": "application/json" },
+    });
+
+    const res = await PATCH(req);
+    expect(res.status).toBe(200);
+    await expect(res.json()).resolves.toEqual({
+      ok: true,
+      id: "c1",
+      parentComment: null,
+    });
+    expect(updateCompletionMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "c1" },
+        data: { rejectionReason: null },
+      }),
+    );
+  });
+
+  it("PATCH returns 404 when completion does not belong to the family", async () => {
+    requireAdultMock.mockResolvedValue({ me: { id: "adult-1", familyId: "fam-1", role: "ADULT" } } as any);
+    findCompletionMock.mockResolvedValue(null);
+
+    const req = new Request("http://localhost/api/admin/approvals", {
+      method: "PATCH",
+      body: JSON.stringify({ completionId: "missing", parentComment: "Note" }),
+      headers: { "Content-Type": "application/json" },
+    });
+
+    const res = await PATCH(req);
+    expect(res.status).toBe(404);
+    await expect(res.json()).resolves.toEqual({ error: "Not found" });
+  });
+
   it("GET maps pending approvals payload", async () => {
     requireAdultMock.mockResolvedValue({ me: { id: "adult-1", familyId: "fam-1", role: "ADULT" } } as any);
-    findPendingMock.mockResolvedValue([
+    findPendingMock.mockResolvedValueOnce([
       {
         id: "c1",
+        status: "PENDING",
         completedAt: new Date("2026-02-20T10:00:00.000Z"),
         pointsEarned: 3,
+        rejectionReason: null,
         user: { id: "kid-1", name: "Kid", email: "kid@example.com", role: "KID" },
         choreInstance: {
           dueDate: new Date("2026-02-20T08:00:00.000Z"),
           chore: { id: "ch-1", title: "Unload", points: 3 },
         },
+      },
+    ]);
+    findPendingMock.mockResolvedValueOnce([
+      {
+        id: "c2",
+        status: "REJECTED",
+        completedAt: new Date("2026-02-19T10:00:00.000Z"),
+        pointsEarned: 2,
+        rejectionReason: "Please retry",
+        user: { id: "kid-2", name: "Eli", email: "eli@example.com", role: "KID" },
+        choreInstance: {
+          dueDate: new Date("2026-02-19T08:00:00.000Z"),
+          chore: { id: "ch-2", title: "Make bed", points: 2 },
+        },
+      },
+    ]);
+    findPendingMock.mockResolvedValueOnce([
+      {
+        id: "c3",
+        status: "APPROVED",
+        completedAt: new Date("2026-02-18T10:00:00.000Z"),
+        approvedAt: new Date("2026-02-18T10:30:00.000Z"),
+        pointsEarned: 4,
+        rejectionReason: null,
+        user: { id: "kid-3", name: "Sophia", email: "sophia@example.com", role: "KID" },
+        choreInstance: {
+          dueDate: new Date("2026-02-18T08:00:00.000Z"),
+          chore: { id: "ch-3", title: "Dishwasher", points: 4 },
+        },
+      },
+    ]);
+    findDueInstancesMock.mockResolvedValue([
+      {
+        id: "inst-4",
+        dueDate: new Date("2026-02-18T08:00:00.000Z"),
+        chore: {
+          id: "ch-4",
+          title: "Vacuum",
+          points: 5,
+          assignments: [
+            {
+              user: { id: "kid-4", name: "Kai", email: "kai@example.com", role: "KID" },
+            },
+          ],
+        },
+        completions: [],
+      },
+    ]);
+    findNotificationsMock.mockResolvedValue([
+      {
+        sourceKey: "completion-c2-rejected",
+        createdAt: new Date("2026-02-19T11:45:00.000Z"),
       },
     ]);
 
@@ -203,6 +453,32 @@ describe("admin approvals", () => {
           id: "c1",
           kid: { id: "kid-1", name: "Kid" },
           chore: { id: "ch-1", title: "Unload" },
+        },
+      ],
+      rejected: [
+        {
+          id: "c2",
+          status: "REJECTED",
+          parentComment: "Please retry",
+          rejectionDate: "2026-02-19T11:45:00.000Z",
+          kid: { id: "kid-2", name: "Eli" },
+          chore: { id: "ch-2", title: "Make bed" },
+        },
+      ],
+      activity: [
+        {
+          id: "c3",
+          status: "APPROVED",
+          approvedAt: "2026-02-18T10:30:00.000Z",
+          kid: { id: "kid-3", name: "Sophia" },
+          chore: { id: "ch-3", title: "Dishwasher" },
+        },
+        {
+          id: "due-inst-4-kid-4",
+          status: "DUE",
+          completedAt: null,
+          kid: { id: "kid-4", name: "Kai" },
+          chore: { id: "ch-4", title: "Vacuum" },
         },
       ],
     });

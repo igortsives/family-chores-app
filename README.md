@@ -16,6 +16,7 @@ Kids complete chores, earn coins, build star progress, and exchange earned stars
 - Assign chores to kids
 - Schedule chores weekly
 - Approve or reject completed chores
+- Add, edit, or remove parent comments inline in the approvals history log
 - Manage family members (add / update / deactivate / hide)
 - Upload optional member profile pictures
 - Approve star exchanges
@@ -26,6 +27,7 @@ Kids complete chores, earn coins, build star progress, and exchange earned stars
 - Mark chores as completed
 - Undo a completion while it is still pending parent approval
 - See rejection reasons from parents
+- View messages grouped into kid-friendly tabs (Recent / Older)
 - Track leaderboard status and weekly progress
 - Earn coins from approved chores
 - Build progress toward ⭐ Stars over time
@@ -52,12 +54,24 @@ Kids complete chores, earn coins, build star progress, and exchange earned stars
 
 - Today's Chores (Kids, with weekly day strip)
 - Kids leaderboard modal (from Today's Chores)
-- Parent Approvals (Parents)
+- Parent Approvals (Parents, with Today/Past views and history modal)
 - Chores Management (Parents)
 - Family Management (Parents)
 - Family Stats (Parents)
 - Awards / Stars History
 - Leaderboard (hidden members are excluded)
+
+---
+
+### 🔔 Notifications
+
+- Notifications are persisted in the database (read/unread + dismiss).
+- `REMINDER` notifications stay tied to current actionable state.
+- Non-reminder update notifications are hard-deleted after 30 days.
+- Unread count excludes stale unread non-reminder updates older than 30 days.
+- Kid notification drawer uses simple tabs:
+  - `Recent` (last 3 days)
+  - `Older` (older than 3 days)
 
 ---
 
@@ -177,7 +191,10 @@ scripts/              # Install / update scripts
 - Run unit tests with `npm run test:run`
 - Run E2E UI tests with `npm run test:e2e`
 - CI runs lint, unit tests, and Playwright E2E tests (with PostgreSQL + Prisma migrate/seed)
-- Product roadmap: see `ROADMAP.md`
+- Approvals history supports inline parent comment add/edit/remove
+- Manage Member and Edit Chore modals include top-right close controls
+- Product planning: see `ROADMAP.md`
+- Completed change history: see `CHANGELOG.md`
 
 ---
 

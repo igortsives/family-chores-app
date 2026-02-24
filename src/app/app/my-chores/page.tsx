@@ -31,6 +31,8 @@ import ReplayRoundedIcon from "@mui/icons-material/ReplayRounded";
 import HourglassTopRoundedIcon from "@mui/icons-material/HourglassTopRounded";
 import EventBusyRoundedIcon from "@mui/icons-material/EventBusyRounded";
 import CelebrationRoundedIcon from "@mui/icons-material/CelebrationRounded";
+import ChevronLeftRoundedIcon from "@mui/icons-material/ChevronLeftRounded";
+import ChevronRightRoundedIcon from "@mui/icons-material/ChevronRightRounded";
 import { addDays, startOfWeekMonday } from "@/lib/week";
 import {
   areAllChoresDone,
@@ -72,10 +74,20 @@ function toDateKey(d: Date) {
   return `${y}-${m}-${day}`;
 }
 
+function detectMobileDevice() {
+  if (typeof navigator === "undefined") return false;
+  const nav = navigator as Navigator & { userAgentData?: { mobile?: boolean } };
+  if (typeof nav.userAgentData?.mobile === "boolean") {
+    return nav.userAgentData.mobile;
+  }
+  return /Android|iPhone|iPad|iPod|IEMobile|Opera Mini|Mobile/i.test(navigator.userAgent);
+}
+
 export default function MyChoresPage() {
   const { data: session, status } = useSession();
   const router = useRouter();
   const searchParams = useSearchParams();
+  const [isMobileDevice, setIsMobileDevice] = React.useState(false);
   const [rows, setRows] = React.useState<Row[] | null>(null);
   const [err, setErr] = React.useState<string | null>(null);
   const [busy, setBusy] = React.useState<Record<string, boolean>>({});
@@ -92,16 +104,67 @@ export default function MyChoresPage() {
     return x;
   });
 
-  const todayDateKey = toDateKey(new Date());
+  const todayDate = React.useMemo(() => {
+    const x = new Date();
+    x.setHours(0, 0, 0, 0);
+    return x;
+  }, []);
+  const todayDateKey = toDateKey(todayDate);
   const selectedDateKey = toDateKey(selectedDate);
   const isSelectedToday = selectedDateKey === todayDateKey;
+  const selectedWeekStart = React.useMemo(() => startOfWeekMonday(selectedDate), [selectedDate]);
+  const currentWeekStart = React.useMemo(() => startOfWeekMonday(todayDate), [todayDate]);
+  const canGoToNextWeek = selectedWeekStart.getTime() < currentWeekStart.getTime();
   const weekDays = React.useMemo(() => {
-    const start = startOfWeekMonday(new Date());
-    return Array.from({ length: 7 }, (_, idx) => addDays(start, idx));
+    return Array.from({ length: 7 }, (_, idx) => addDays(selectedWeekStart, idx));
+  }, [selectedWeekStart]);
+  const goToPreviousWeek = React.useCallback(() => {
+    setSelectedDate((prev) => addDays(prev, -7));
   }, []);
+  const goToNextWeek = React.useCallback(() => {
+    if (!canGoToNextWeek) return;
+    setSelectedDate((prev) => {
+      const next = addDays(prev, 7);
+      return next.getTime() > todayDate.getTime() ? todayDate : next;
+    });
+  }, [canGoToNextWeek, todayDate]);
+  const touchStartXRef = React.useRef<number | null>(null);
+  const touchStartYRef = React.useRef<number | null>(null);
+  const handleWeekStripTouchStart = React.useCallback((event: React.TouchEvent<HTMLDivElement>) => {
+    if (!isMobileDevice) return;
+    const touch = event.touches[0];
+    touchStartXRef.current = touch.clientX;
+    touchStartYRef.current = touch.clientY;
+  }, [isMobileDevice]);
+  const handleWeekStripTouchEnd = React.useCallback((event: React.TouchEvent<HTMLDivElement>) => {
+    if (!isMobileDevice) return;
+    const startX = touchStartXRef.current;
+    const startY = touchStartYRef.current;
+    touchStartXRef.current = null;
+    touchStartYRef.current = null;
+    if (startX == null || startY == null) return;
+    const endTouch = event.changedTouches[0];
+    const deltaX = endTouch.clientX - startX;
+    const deltaY = endTouch.clientY - startY;
+    if (Math.abs(deltaX) < 44) return;
+    if (Math.abs(deltaX) < Math.abs(deltaY)) return;
+    if (deltaX > 0) {
+      goToPreviousWeek();
+      return;
+    }
+    goToNextWeek();
+  }, [goToNextWeek, goToPreviousWeek, isMobileDevice]);
   const dayNameFmt = React.useMemo(
     () => new Intl.DateTimeFormat(undefined, { weekday: "short" }),
     [],
+  );
+  const monthNameFmt = React.useMemo(
+    () => new Intl.DateTimeFormat(undefined, { month: "long" }),
+    [],
+  );
+  const weekLabel = React.useMemo(
+    () => `${monthNameFmt.format(selectedDate)} ${selectedDate.getFullYear()}`,
+    [monthNameFmt, selectedDate],
   );
   const timePreview = searchParams.get("timeOfDay");
   const forcedMode = timePreview === "morning" || timePreview === "afternoon" || timePreview === "evening"
@@ -196,6 +259,10 @@ export default function MyChoresPage() {
     if (!res.ok) throw new Error(j?.error || `Failed (${res.status})`);
     setLeaderboardRows(Array.isArray(j.rows) ? j.rows : []);
   }, [isKidView]);
+
+  React.useEffect(() => {
+    setIsMobileDevice(detectMobileDevice());
+  }, []);
 
   React.useEffect(() => {
     if (status !== "authenticated") return;
@@ -299,10 +366,13 @@ export default function MyChoresPage() {
     }
   }
 
-  const statusChip = (s: string) => {
+  const statusChip = (s: string, options?: { canRetryRejected?: boolean }) => {
     if (s === "APPROVED") return <Chip label="Approved" color="success" size="small" />;
     if (s === "PENDING") return <Chip label={isKidView ? "Waiting for parent" : "Pending approval"} color="warning" size="small" />;
-    if (s === "REJECTED") return <Chip label={isKidView ? "Try again" : "Rejected"} color="error" size="small" />;
+    if (s === "REJECTED") {
+      const canRetryRejected = options?.canRetryRejected ?? true;
+      return <Chip label={isKidView && canRetryRejected ? "Try again" : "Rejected"} color="error" size="small" />;
+    }
     if (s === "NOT_DONE") return <Chip label={isKidView ? "To do" : "Not done"} size="small" />;
     return <Chip label={s} size="small" />;
   };
@@ -336,14 +406,62 @@ export default function MyChoresPage() {
           <Card
             variant="outlined"
             sx={{
+              position: "relative",
+              overflow: "visible",
               borderColor: "#b8d7ff",
               backgroundImage: "linear-gradient(180deg, #fafdff 0%, #eef6ff 100%)",
               boxShadow: "inset 0 1px 0 rgba(255,255,255,0.9)",
             }}
           >
-            <CardContent sx={{ py: 1.5, "&:last-child": { pb: 1.5 } }}>
-              <Box sx={{ display: "flex", justifyContent: "center", overflowX: "auto", pb: 0.5 }}>
-                <Box sx={{ display: "flex", gap: 1.25, width: "max-content", mx: "auto", px: 0.5 }}>
+            <CardContent sx={{ py: 1.5, position: "relative", "&:last-child": { pb: 1.5 } }}>
+              <Box
+                sx={{
+                  position: "absolute",
+                  left: "50%",
+                  top: 0,
+                  transform: "translate(-50%, -48%)",
+                  px: 0.65,
+                  py: 0.1,
+                  borderRadius: "9px",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  borderLeft: "1px solid #b8d7ff",
+                  borderRight: "1px solid #b8d7ff",
+                  bgcolor: "#fafdff",
+                  fontWeight: 700,
+                  fontSize: { xs: "0.64rem", sm: "0.68rem" },
+                  lineHeight: 1,
+                  letterSpacing: "0.01em",
+                  color: "rgba(63, 102, 141, 0.82)",
+                  pointerEvents: "none",
+                  userSelect: "none",
+                  zIndex: 1,
+                }}
+              >
+                <span>{weekLabel}</span>
+              </Box>
+              <Stack direction="row" alignItems="center" spacing={0.75} sx={{ mt: 0.45 }}>
+                {!isMobileDevice && (
+                  <IconButton
+                    aria-label="Previous week"
+                    onClick={goToPreviousWeek}
+                    sx={{
+                      width: 32,
+                      height: 32,
+                      border: "1px solid #c8daf7",
+                      bgcolor: "#eef5ff",
+                      "&:hover": { bgcolor: "#e2eeff", borderColor: "#98b9ef" },
+                    }}
+                  >
+                    <ChevronLeftRoundedIcon fontSize="small" />
+                  </IconButton>
+                )}
+                <Box
+                  onTouchStart={handleWeekStripTouchStart}
+                  onTouchEnd={handleWeekStripTouchEnd}
+                  sx={{ display: "flex", justifyContent: "center", overflowX: "hidden", pb: 0.25, flex: 1 }}
+                >
+                  <Box sx={{ display: "flex", gap: { xs: 0.75, sm: 1.25 }, width: "max-content", mx: "auto", px: 0.5 }}>
                   {weekDays.map((day) => {
                     const dayKey = toDateKey(day);
                     const isSelected = dayKey === selectedDateKey;
@@ -370,14 +488,14 @@ export default function MyChoresPage() {
                             setSelectedDate(day);
                           }}
                           sx={{
-                            minWidth: 50,
-                            width: 50,
-                            height: 50,
+                            minWidth: { xs: 44, sm: 50 },
+                            width: { xs: 44, sm: 50 },
+                            height: { xs: 44, sm: 50 },
                             borderRadius: "999px",
                             flexShrink: 0,
                             p: 0,
                             fontWeight: 800,
-                            fontSize: "1rem",
+                            fontSize: { xs: "0.95rem", sm: "1rem" },
                             lineHeight: 1,
                             textTransform: "none",
                             borderWidth: 2,
@@ -408,8 +526,29 @@ export default function MyChoresPage() {
                       </Stack>
                     );
                   })}
+                  </Box>
                 </Box>
-              </Box>
+                {!isMobileDevice && (
+                  <IconButton
+                    aria-label="Next week"
+                    disabled={!canGoToNextWeek}
+                    onClick={goToNextWeek}
+                    sx={{
+                      width: 32,
+                      height: 32,
+                      border: "1px solid #c8daf7",
+                      bgcolor: "#eef5ff",
+                      "&:hover": { bgcolor: "#e2eeff", borderColor: "#98b9ef" },
+                      "&.Mui-disabled": {
+                        borderColor: "#e2e4e8",
+                        bgcolor: "#f7f7f8",
+                      },
+                    }}
+                  >
+                    <ChevronRightRoundedIcon fontSize="small" />
+                  </IconButton>
+                )}
+              </Stack>
             </CardContent>
           </Card>
         )}
@@ -493,8 +632,13 @@ export default function MyChoresPage() {
 
         {rows?.map((r) => {
           const isRejected = r.todayStatus === "REJECTED";
+          const isPending = r.todayStatus === "PENDING";
+          const isApproved = r.todayStatus === "APPROVED";
+          const parentComment = (r.todayRejectionReason ?? "").trim();
           const canUndo = isKidView && r.todayStatus === "PENDING" && Boolean(r.todayCompletionId);
+          const isPastSelectedDay = isKidView && !isSelectedToday;
           const canSubmitForDay = !isKidView || isSelectedToday;
+          const canRetryRejected = isRejected && canSubmitForDay;
           const disabled = busy[r.choreId]
             || r.todayStatus === "APPROVED"
             || (r.todayStatus === "PENDING" && !canUndo)
@@ -515,12 +659,16 @@ export default function MyChoresPage() {
                 : "Undo"
               : r.todayStatus === "APPROVED"
                 ? "Done"
-                : isRejected
+                : isPending
                   ? isKidView
-                    ? "Try again"
+                    ? "Waiting for parent"
+                    : "Pending approval"
+                  : isRejected
+                  ? isKidView
+                    ? canRetryRejected ? "Try again" : "Past day"
                     : "Resubmit"
                   : isKidView && !canSubmitForDay
-                    ? "Today only"
+                    ? "Past day"
                   : isKidView
                     ? "I finished this"
                     : "Mark done";
@@ -530,24 +678,24 @@ export default function MyChoresPage() {
               ? <UndoRoundedIcon />
               : r.todayStatus === "APPROVED"
                 ? <CheckCircleRoundedIcon />
-                : isRejected
+                : isPending
+                  ? <HourglassTopRoundedIcon />
+                  : isRejected && canRetryRejected
                   ? <ReplayRoundedIcon />
                   : !canSubmitForDay
                     ? <EventBusyRoundedIcon />
-                    : r.todayStatus === "PENDING"
-                      ? <HourglassTopRoundedIcon />
-                      : <TaskAltRoundedIcon />;
+                    : <TaskAltRoundedIcon />;
           const kidActionPalette = canUndo
             ? { color: "warning.dark", bgcolor: "rgba(237,108,2,0.12)", borderColor: "rgba(237,108,2,0.45)" }
             : r.todayStatus === "APPROVED"
               ? { color: "success.main", bgcolor: "rgba(46,125,50,0.14)", borderColor: "rgba(46,125,50,0.40)" }
-              : isRejected
+              : isPending
+                ? { color: "warning.dark", bgcolor: "rgba(237,108,2,0.10)", borderColor: "rgba(237,108,2,0.38)" }
+                : isRejected && canRetryRejected
                 ? { color: "#8a4b00", bgcolor: "rgba(237,108,2,0.16)", borderColor: "rgba(237,108,2,0.52)" }
                 : !canSubmitForDay
                   ? { color: "text.disabled", bgcolor: "rgba(0,0,0,0.04)", borderColor: "rgba(0,0,0,0.20)" }
-                  : r.todayStatus === "PENDING"
-                    ? { color: "warning.dark", bgcolor: "rgba(237,108,2,0.10)", borderColor: "rgba(237,108,2,0.38)" }
-                    : { color: "common.white", bgcolor: "primary.main", borderColor: "primary.main" };
+                  : { color: "common.white", bgcolor: "primary.main", borderColor: "primary.main" };
 
           return (
             <Card key={r.choreId} variant="outlined" data-testid={`chore-card-${r.choreId}`}>
@@ -569,16 +717,35 @@ export default function MyChoresPage() {
                           color="primary"
                           variant="outlined"
                         />
-                        {statusChip(r.todayStatus)}
+                        {statusChip(r.todayStatus, { canRetryRejected })}
                       </Stack>
-                      {r.todayStatus === "REJECTED" && r.todayRejectionReason && (
+                      {isKidView && isPending && isPastSelectedDay && (
+                        <Alert severity="info" sx={{ mt: 1.5, py: 0 }}>
+                          You finished this on that day. Parent can still approve it and give you credit.
+                        </Alert>
+                      )}
+                      {isApproved && parentComment && (
+                        <Alert severity="success" sx={{ mt: 1.5, py: 0 }}>
+                          Parent note: {parentComment}
+                        </Alert>
+                      )}
+                      {r.todayStatus === "REJECTED" && parentComment && (
                         <Alert severity="error" sx={{ mt: 1.5, py: 0 }}>
                           {isKidView ? "Parent note: " : "Parent feedback: "}
-                          {r.todayRejectionReason}{" "}
+                          {parentComment}{" "}
                           {isKidView ? (
-                            <>
-                              Fix it, then tap <b>Try again</b>.
-                            </>
+                            canRetryRejected
+                              ? (
+                                <>
+                                  Fix it, then tap <b>Try again</b>.
+                                </>
+                              )
+                              : (
+                                <>
+                                  This day has passed, so you can&apos;t resubmit for this date.
+                                  Ask a parent to assign it again.
+                                </>
+                              )
                           ) : (
                             <>
                               Update and tap <b>Resubmit</b>.

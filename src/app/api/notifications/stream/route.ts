@@ -4,7 +4,7 @@ import { getUnreadNotificationCount, syncUserReminderNotificationsIfStale } from
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const SSE_POLL_MS = 30_000;
+const SSE_POLL_MS = 10_000;
 
 function sseData(payload: unknown) {
   return `data: ${JSON.stringify(payload)}\n\n`;

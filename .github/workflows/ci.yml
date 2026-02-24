@@ -72,6 +72,9 @@ jobs:
       - name: Seed database
         run: npx prisma db seed
 
+      - name: Run build
+        run: npm run build
+
       - name: Install Playwright browser
         run: npx playwright install --with-deps chromium
 

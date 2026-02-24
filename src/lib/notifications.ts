@@ -2,6 +2,9 @@ import { NotificationKind, NotificationSeverity, Role } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 
 const REMINDER_SYNC_MAX_AGE_MS = 5 * 60 * 1000;
+const NON_REMINDER_READ_VISIBLE_MS = 7 * 24 * 60 * 60 * 1000;
+const NON_REMINDER_UNREAD_MAX_MS = 30 * 24 * 60 * 60 * 1000;
+const NON_REMINDER_HARD_DELETE_MS = 30 * 24 * 60 * 60 * 1000;
 
 type ReminderPayload = {
   severity: NotificationSeverity;
@@ -31,6 +34,23 @@ export type NotificationFeedItem = {
   createdAt: string;
   readAt: string | null;
 };
+
+function retentionCutoff(now: Date, maxAgeMs: number) {
+  return new Date(now.getTime() - maxAgeMs);
+}
+
+async function enforceNonReminderRetention(userId: string, now = new Date()) {
+  const hardDeleteDate = retentionCutoff(now, NON_REMINDER_HARD_DELETE_MS);
+
+  // Keep read/unread state user-driven. Only prune old non-reminder updates.
+  await prisma.notification.deleteMany({
+    where: {
+      userId,
+      kind: { not: "REMINDER" },
+      createdAt: { lt: hardDeleteDate },
+    },
+  });
+}
 
 export async function createNotification(input: CreateNotificationInput) {
   const sourceKey = input.sourceKey?.trim() || null;
@@ -349,6 +369,8 @@ export async function syncKidReminderNotificationsForFamily(familyId: string) {
 }
 
 export async function getUserNotifications(userId: string) {
+  await enforceNonReminderRetention(userId);
+
   const [rows, unreadCount] = await Promise.all([
     prisma.notification.findMany({
       where: {
@@ -373,6 +395,10 @@ export async function getUserNotifications(userId: string) {
         userId,
         dismissedAt: null,
         readAt: null,
+        OR: [
+          { kind: "REMINDER" },
+          { createdAt: { gte: retentionCutoff(new Date(), NON_REMINDER_UNREAD_MAX_MS) } },
+        ],
       },
     }),
   ]);
@@ -397,8 +423,26 @@ export async function getUnreadNotificationCount(userId: string) {
       userId,
       dismissedAt: null,
       readAt: null,
+      OR: [
+        { kind: "REMINDER" },
+        { createdAt: { gte: retentionCutoff(new Date(), NON_REMINDER_UNREAD_MAX_MS) } },
+      ],
     },
   });
+}
+
+export function getNotificationDisplayBucket(item: {
+  kind: NotificationKind;
+  createdAt: string;
+  readAt: string | null;
+}, now = new Date()) {
+  if (item.kind === "REMINDER") return "ACTIONABLE" as const;
+  const createdMs = Number(new Date(item.createdAt));
+  if (!Number.isFinite(createdMs)) return item.readAt ? "ARCHIVED" as const : "RECENT" as const;
+  if (!item.readAt) {
+    return now.getTime() - createdMs >= NON_REMINDER_UNREAD_MAX_MS ? "ARCHIVED" as const : "RECENT" as const;
+  }
+  return now.getTime() - createdMs <= NON_REMINDER_READ_VISIBLE_MS ? "RECENT" as const : "ARCHIVED" as const;
 }
 
 export async function markNotificationRead(userId: string, notificationId: string) {

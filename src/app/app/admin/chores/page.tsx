@@ -659,7 +659,16 @@ export default function AdminChoresPage() {
       )}
 
       <Dialog open={open} onClose={() => setOpen(false)} fullWidth maxWidth="sm">
-        <DialogTitle>{editing ? "Edit chore" : "New chore"}</DialogTitle>
+        <DialogTitle sx={{ pr: 6 }}>
+          {editing ? "Edit chore" : "New chore"}
+          <IconButton
+            aria-label="Close chore dialog"
+            onClick={() => setOpen(false)}
+            sx={{ position: "absolute", right: 8, top: 8 }}
+          >
+            <CloseRoundedIcon />
+          </IconButton>
+        </DialogTitle>
         <DialogContent>
           <Stack spacing={2} sx={{ mt: 1 }}>
             <TextField

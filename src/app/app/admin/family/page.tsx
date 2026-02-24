@@ -688,7 +688,16 @@ export default function FamilyMembersPage() {
       )}
 
       <Dialog open={open} onClose={() => setOpen(false)} fullWidth maxWidth="sm">
-        <DialogTitle>{editing ? "Manage member" : "Add member"}</DialogTitle>
+        <DialogTitle sx={{ pr: 6 }}>
+          {editing ? "Manage member" : "Add member"}
+          <IconButton
+            aria-label="Close member dialog"
+            onClick={() => setOpen(false)}
+            sx={{ position: "absolute", right: 8, top: 8 }}
+          >
+            <CloseRoundedIcon />
+          </IconButton>
+        </DialogTitle>
         <DialogContent>
           <Stack spacing={2} sx={{ mt: 1 }}>
             <TextField

@@ -22,6 +22,8 @@ import {
   Menu,
   MenuItem,
   Stack,
+  Tab,
+  Tabs,
   Toolbar,
   Tooltip,
   useMediaQuery,
@@ -79,7 +81,22 @@ type HeaderMe = {
   avatarUrl: string | null;
 };
 
-const NOTIFICATION_STREAM_RECONNECT_MS = 15_000;
+const NOTIFICATION_REFRESH_EVENT = "notifications:refresh";
+const NOTIFICATION_UNREAD_POLL_MS = 20_000;
+const NON_REMINDER_READ_VISIBLE_MS = 7 * 24 * 60 * 60 * 1000;
+const NON_REMINDER_UNREAD_MAX_MS = 30 * 24 * 60 * 60 * 1000;
+const KID_RECENT_WINDOW_MS = 3 * 24 * 60 * 60 * 1000;
+
+type NotificationBucket = "ACTIONABLE" | "RECENT" | "ARCHIVED";
+
+function notificationBucket(item: NotificationItem, nowMs = Date.now()): NotificationBucket {
+  if (item.kind === "REMINDER") return "ACTIONABLE";
+  const createdMs = Number(new Date(item.createdAt));
+  if (!Number.isFinite(createdMs)) return item.readAt ? "ARCHIVED" : "RECENT";
+  const ageMs = nowMs - createdMs;
+  if (!item.readAt) return ageMs >= NON_REMINDER_UNREAD_MAX_MS ? "ARCHIVED" : "RECENT";
+  return ageMs <= NON_REMINDER_READ_VISIBLE_MS ? "RECENT" : "ARCHIVED";
+}
 
 const PROFILE_MENU_PAPER_PROPS = {
   sx: {
@@ -369,8 +386,6 @@ function NotificationBellButton({
   externalUnreadCount?: number | null;
 }) {
   const [unreadCount, setUnreadCount] = React.useState(0);
-  const streamRef = React.useRef<EventSource | null>(null);
-  const reconnectTimerRef = React.useRef<number | null>(null);
 
   const loadUnreadCount = React.useCallback(async () => {
     try {
@@ -391,58 +406,26 @@ function NotificationBellButton({
 
   React.useEffect(() => {
     void loadUnreadCount();
-    const scheduleReconnect = () => {
-      if (reconnectTimerRef.current !== null) return;
-      reconnectTimerRef.current = window.setTimeout(() => {
-        reconnectTimerRef.current = null;
-        if (document.visibilityState !== "visible") return;
-        connectStream();
-      }, NOTIFICATION_STREAM_RECONNECT_MS);
-    };
-    const clearReconnect = () => {
-      if (reconnectTimerRef.current === null) return;
-      window.clearTimeout(reconnectTimerRef.current);
-      reconnectTimerRef.current = null;
-    };
-    const connectStream = () => {
-      if (streamRef.current) return;
-      const stream = new EventSource("/api/notifications/stream");
-      streamRef.current = stream;
-      clearReconnect();
-      stream.onmessage = (event) => {
-        try {
-          const payload = JSON.parse(event.data) as { unreadCount?: unknown };
-          const nextUnreadCount = payload.unreadCount;
-          if (typeof nextUnreadCount === "number") {
-            setUnreadCount((prev) => (prev === nextUnreadCount ? prev : nextUnreadCount));
-          }
-        } catch {
-          // Ignore malformed stream payloads.
-        }
-      };
-      stream.onerror = () => {
-        stream.close();
-        if (streamRef.current === stream) streamRef.current = null;
-        scheduleReconnect();
-      };
-    };
+    const timer = window.setInterval(() => {
+      if (document.visibilityState !== "visible") return;
+      void loadUnreadCount();
+    }, NOTIFICATION_UNREAD_POLL_MS);
 
     const onVisibilityChange = () => {
       if (document.visibilityState === "visible") {
         void loadUnreadCount();
-        connectStream();
       }
     };
+    const onExplicitRefresh = () => {
+      void loadUnreadCount();
+    };
 
-    connectStream();
     document.addEventListener("visibilitychange", onVisibilityChange);
+    window.addEventListener(NOTIFICATION_REFRESH_EVENT, onExplicitRefresh);
     return () => {
       document.removeEventListener("visibilitychange", onVisibilityChange);
-      clearReconnect();
-      if (streamRef.current) {
-        streamRef.current.close();
-        streamRef.current = null;
-      }
+      window.removeEventListener(NOTIFICATION_REFRESH_EVENT, onExplicitRefresh);
+      window.clearInterval(timer);
     };
   }, [loadUnreadCount]);
 
@@ -485,12 +468,48 @@ export default function BrandShell({
   const [notifLoading, setNotifLoading] = React.useState(false);
   const [notifErr, setNotifErr] = React.useState<string | null>(null);
   const [notifItems, setNotifItems] = React.useState<NotificationItem[]>([]);
+  const [kidNotifTab, setKidNotifTab] = React.useState<"RECENT" | "OLDER">("RECENT");
   const [kidSummary, setKidSummary] = React.useState<KidSummary | null>(null);
   const [headerMe, setHeaderMe] = React.useState<HeaderMe | null>(null);
   const drawerUnreadCount = React.useMemo(
     () => notifItems.reduce((count, item) => count + (item.readAt ? 0 : 1), 0),
     [notifItems],
   );
+  const notifBucketed = React.useMemo(() => {
+    const nowMs = Date.now();
+    const actionable: NotificationItem[] = [];
+    const recent: NotificationItem[] = [];
+    const archived: NotificationItem[] = [];
+    for (const item of notifItems) {
+      const bucket = notificationBucket(item, nowMs);
+      if (bucket === "ACTIONABLE") actionable.push(item);
+      else if (bucket === "RECENT") recent.push(item);
+      else archived.push(item);
+    }
+    return { actionable, recent, archived };
+  }, [notifItems]);
+  const kidNotificationGroups = React.useMemo(() => {
+    const recentThreshold = Date.now() - KID_RECENT_WINDOW_MS;
+    const recent: NotificationItem[] = [];
+    const older: NotificationItem[] = [];
+    for (const item of notifItems) {
+      const createdMs = Number(new Date(item.createdAt));
+      if (!Number.isFinite(createdMs) || createdMs >= recentThreshold) recent.push(item);
+      else older.push(item);
+    }
+    const byNewest = (a: NotificationItem, b: NotificationItem) => {
+      const av = Number(new Date(a.createdAt));
+      const bv = Number(new Date(b.createdAt));
+      if (!Number.isFinite(av) || !Number.isFinite(bv)) return 0;
+      return bv - av;
+    };
+    recent.sort(byNewest);
+    older.sort(byNewest);
+    return { recent, older };
+  }, [notifItems]);
+  const kidVisibleNotificationItems = kidNotifTab === "RECENT"
+    ? kidNotificationGroups.recent
+    : kidNotificationGroups.older;
 
   const nav: NavItem[] = React.useMemo(
     () =>
@@ -702,6 +721,17 @@ export default function BrandShell({
     return undefined;
   }, [loadHeaderState]);
 
+  React.useEffect(() => {
+    if (!isKidView || !notifOpen) return;
+    if (kidNotifTab === "RECENT" && kidNotificationGroups.recent.length === 0 && kidNotificationGroups.older.length > 0) {
+      setKidNotifTab("OLDER");
+      return;
+    }
+    if (kidNotifTab === "OLDER" && kidNotificationGroups.older.length === 0 && kidNotificationGroups.recent.length > 0) {
+      setKidNotifTab("RECENT");
+    }
+  }, [isKidView, notifOpen, kidNotifTab, kidNotificationGroups]);
+
   function notificationColor(severity: NotificationItem["severity"]) {
     if (severity === "SUCCESS") return "success" as const;
     if (severity === "WARNING") return "warning" as const;
@@ -759,6 +789,98 @@ export default function BrandShell({
     }
     setNotifItems((prev) =>
       prev.map((item) => (item.readAt ? item : { ...item, readAt: new Date().toISOString() }))
+    );
+  }
+
+  function renderNotificationList(items: NotificationItem[]) {
+    return (
+      <List disablePadding>
+        {items.map((item) => (
+          <ListItemButton
+            key={item.id}
+            onClick={async () => {
+              try {
+                if (!item.readAt) await markNotificationRead(item.id);
+              } catch (e: unknown) {
+                const message = e instanceof Error ? e.message : String(e);
+                setNotifErr(message);
+              }
+              router.push(item.href);
+              setNotifOpen(false);
+            }}
+            sx={{
+              alignItems: "flex-start",
+              borderRadius: 2,
+              mb: 0.75,
+              borderWidth: 1,
+              borderStyle: "solid",
+              borderColor: item.readAt ? "transparent" : "primary.light",
+              bgcolor: item.readAt ? "transparent" : "rgba(25,118,210,0.08)",
+              opacity: item.readAt ? 0.8 : 1,
+              "&:hover": {
+                bgcolor: item.readAt ? "rgba(0,0,0,0.04)" : "rgba(25,118,210,0.14)",
+              },
+            }}
+          >
+            <ListItemText
+              disableTypography
+              primary={(
+                <Stack direction="row" justifyContent="space-between" alignItems="center" gap={1}>
+                  <Stack direction="row" spacing={0.75} alignItems="center" sx={{ minWidth: 0 }}>
+                    {!item.readAt && (
+                      <Box
+                        sx={{
+                          width: 8,
+                          height: 8,
+                          borderRadius: "50%",
+                          bgcolor: "primary.main",
+                          flexShrink: 0,
+                        }}
+                      />
+                    )}
+                    <Typography variant="body1" sx={{ fontWeight: item.readAt ? 600 : 900 }} noWrap>
+                      {item.title}
+                    </Typography>
+                  </Stack>
+                  <Stack direction="row" spacing={0.5} alignItems="center">
+                    {!item.readAt && <Chip label="New" size="small" color="primary" />}
+                    <Chip
+                      label={item.kind === "REMINDER" ? (isKidView ? "To do" : "Reminder") : "Update"}
+                      size="small"
+                      color={notificationColor(item.severity)}
+                    />
+                    <IconButton
+                      aria-label="dismiss notification"
+                      size="small"
+                      onClick={async (event) => {
+                        event.stopPropagation();
+                        try {
+                          await dismissNotificationItem(item.id);
+                        } catch (e: unknown) {
+                          const message = e instanceof Error ? e.message : String(e);
+                          setNotifErr(message);
+                        }
+                      }}
+                    >
+                      <CloseRoundedIcon fontSize="small" />
+                    </IconButton>
+                  </Stack>
+                </Stack>
+              )}
+              secondary={(
+                <Stack spacing={0.5} sx={{ mt: 0.5 }}>
+                  <Typography variant="body2" color="text.secondary">
+                    {item.message}
+                  </Typography>
+                  <Typography variant="caption" color="text.secondary">
+                    {new Date(item.createdAt).toLocaleString()}
+                  </Typography>
+                </Stack>
+              )}
+            />
+          </ListItemButton>
+        ))}
+      </List>
     );
   }
 
@@ -1008,97 +1130,65 @@ export default function BrandShell({
 
           {!notifLoading && notifItems.length === 0 && (
             <Typography variant="body2" color="text.secondary">
-              {isKidView ? "No new messages." : "You're all caught up."}
+              {isKidView ? "No messages right now." : "You're all caught up."}
             </Typography>
           )}
 
-          <List disablePadding>
-            {notifItems.map((item) => (
-              <ListItemButton
-                key={item.id}
-                onClick={async () => {
-                  try {
-                    if (!item.readAt) await markNotificationRead(item.id);
-                  } catch (e: unknown) {
-                    const message = e instanceof Error ? e.message : String(e);
-                    setNotifErr(message);
-                  }
-                  router.push(item.href);
-                  setNotifOpen(false);
-                }}
-                sx={{
-                  alignItems: "flex-start",
-                  borderRadius: 2,
-                  mb: 0.75,
-                  borderWidth: 1,
-                  borderStyle: "solid",
-                  borderColor: item.readAt ? "transparent" : "primary.light",
-                  bgcolor: item.readAt ? "transparent" : "rgba(25,118,210,0.08)",
-                  opacity: item.readAt ? 0.8 : 1,
-                  "&:hover": {
-                    bgcolor: item.readAt ? "rgba(0,0,0,0.04)" : "rgba(25,118,210,0.14)",
-                  },
-                }}
+          {!notifLoading && notifItems.length > 0 && isKidView && (
+            <Stack spacing={1}>
+              <Tabs
+                value={kidNotifTab}
+                onChange={(_, value) => setKidNotifTab(value)}
+                variant="fullWidth"
+                aria-label="message tabs"
               >
-                <ListItemText
-                  disableTypography
-                  primary={
-                    <Stack direction="row" justifyContent="space-between" alignItems="center" gap={1}>
-                      <Stack direction="row" spacing={0.75} alignItems="center" sx={{ minWidth: 0 }}>
-                        {!item.readAt && (
-                          <Box
-                            sx={{
-                              width: 8,
-                              height: 8,
-                              borderRadius: "50%",
-                              bgcolor: "primary.main",
-                              flexShrink: 0,
-                            }}
-                          />
-                        )}
-                        <Typography variant="body1" sx={{ fontWeight: item.readAt ? 600 : 900 }} noWrap>
-                          {item.title}
-                        </Typography>
-                      </Stack>
-                      <Stack direction="row" spacing={0.5} alignItems="center">
-                        {!item.readAt && <Chip label="New" size="small" color="primary" />}
-                        <Chip
-                          label={item.kind === "REMINDER" ? (isKidView ? "To do" : "Reminder") : "Update"}
-                          size="small"
-                          color={notificationColor(item.severity)}
-                        />
-                        <IconButton
-                          aria-label="dismiss notification"
-                          size="small"
-                          onClick={async (event) => {
-                            event.stopPropagation();
-                            try {
-                              await dismissNotificationItem(item.id);
-                            } catch (e: unknown) {
-                              const message = e instanceof Error ? e.message : String(e);
-                              setNotifErr(message);
-                            }
-                          }}
-                        >
-                          <CloseRoundedIcon fontSize="small" />
-                        </IconButton>
-                      </Stack>
-                    </Stack>
-                  }
-                  secondary={
-                    <Stack spacing={0.5} sx={{ mt: 0.5 }}>
-                      <Typography variant="body2" color="text.secondary">
-                        {item.message}
-                      </Typography>
-                      <Typography variant="caption" color="text.secondary">
-                        {new Date(item.createdAt).toLocaleString()}
-                      </Typography>
-                    </Stack>
-                  }
-                />
-              </ListItemButton>
-            ))}
-          </List>
+                <Tab value="RECENT" label={`Recent (${kidNotificationGroups.recent.length})`} />
+                <Tab value="OLDER" label={`Older (${kidNotificationGroups.older.length})`} />
+              </Tabs>
+              {kidVisibleNotificationItems.length === 0 ? (
+                <Typography variant="body2" color="text.secondary" sx={{ py: 1 }}>
+                  {kidNotifTab === "RECENT" ? "No recent messages." : "No older messages."}
+                </Typography>
+              ) : (
+                renderNotificationList(kidVisibleNotificationItems)
+              )}
+            </Stack>
+          )}
+
+          {!notifLoading && notifItems.length > 0 && !isKidView && (
+            <Stack spacing={1.25}>
+              <Box>
+                <Typography variant="overline" color="text.secondary">Needs action</Typography>
+                {notifBucketed.actionable.length === 0 ? (
+                  <Typography variant="body2" color="text.secondary" sx={{ mt: 0.25 }}>
+                    No active reminders.
+                  </Typography>
+                ) : (
+                  renderNotificationList(notifBucketed.actionable)
+                )}
+              </Box>
+              <Box>
+                <Typography variant="overline" color="text.secondary">Recent updates</Typography>
+                {notifBucketed.recent.length === 0 ? (
+                  <Typography variant="body2" color="text.secondary" sx={{ mt: 0.25 }}>
+                    No recent updates.
+                  </Typography>
+                ) : (
+                  renderNotificationList(notifBucketed.recent)
+                )}
+              </Box>
+              <Box>
+                <Typography variant="overline" color="text.secondary">Archive</Typography>
+                {notifBucketed.archived.length === 0 ? (
+                  <Typography variant="body2" color="text.secondary" sx={{ mt: 0.25 }}>
+                    No archived notifications.
+                  </Typography>
+                ) : (
+                  renderNotificationList(notifBucketed.archived)
+                )}
+              </Box>
+            </Stack>
+          )}
         </Box>
       </Drawer>
 
